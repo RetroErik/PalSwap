@@ -1,4 +1,4 @@
-# EVGAPAL — CGA Palette Override TSR for EGA and VGA cards
+# VEGAPal — CGA Palette Override TSR for EGA and VGA cards
 
 **Version 2.1** — By Retro Erik, 2026
 
@@ -14,7 +14,7 @@ CGA games call `INT 10h AH=00h AL=04h` at startup to set CGA mode 4. This resets
 
 ## The Solution
 
-EVGAPAL installs as a TSR and hooks `INT 10h`. Every time a game sets CGA mode 4 or 5, the hook:
+VEGAPal installs as a TSR and hooks `INT 10h`. Every time a game sets CGA mode 4 or 5, the hook:
 
 1. Lets the original handler run (sets the hardware mode normally).
 2. Immediately reprograms the VGA DAC or EGA ATC with your saved colours.
@@ -34,12 +34,12 @@ The game sees its expected CGA mode, but with your custom palette — invisibly 
 ## Usage
 
 ```
-EVGAPAL [file.txt] [/1..5] [/R] [/U] [/?]
+VEGAPal [file.txt] [/1..5] [/R] [/U] [/?]
 ```
 
 | Switch    | Effect |
 |-----------|--------|
-| *(none)*  | Load colours from `EVGAPAL.TXT` in the current directory |
+| *(none)*  | Load colours from `VEGAPal.TXT` in the current directory |
 | `file.txt`| Load colours from the named text file |
 | `/1`      | Preset: Arcade Vibrant — Black, Blue, Red, Skin |
 | `/2`      | Preset: Sierra Natural — Black, Teal, Brown, Skin |
@@ -53,16 +53,16 @@ EVGAPAL [file.txt] [/1..5] [/R] [/U] [/?]
 ### Typical workflow
 
 ```dos
-EVGAPAL /3          ; install TSR with C64 preset
+VEGAPal /3          ; install TSR with C64 preset
 ZAXXON              ; run the game — colours are applied automatically
-EVGAPAL /U          ; uninstall when done
+VEGAPal /U          ; uninstall when done
 ```
 
 To reinstall with a different palette, uninstall first:
 
 ```dos
-EVGAPAL /U
-EVGAPAL /2
+VEGAPal /U
+VEGAPal /2
 ```
 
 ---
@@ -114,7 +114,7 @@ Calculated at runtime as `(offset_of_end_marker + 15) / 16` paragraphs. Because 
 ## Building from Source
 
 ```dos
-nasm -f bin -o EVGAPAL.COM EVGAPAL.asm
+nasm -f bin -o VEGAPal.COM VEGAPal.asm
 ```
 
 Requires NASM. Produces a plain DOS `.COM` file (~3.9 KB).
@@ -125,12 +125,12 @@ Requires NASM. Produces a plain DOS `.COM` file (~3.9 KB).
 
 | File | Description |
 |------|-------------|
-| `EVGAPAL.ASM` | Full NASM source |
-| `EVGAPAL.COM` | Assembled binary, ready to run |
-| `EVGAPAL copy.asm` | Old v1.0 one-shot version (non-TSR, for reference) |
+| `VEGAPal.ASM` | Full NASM source |
+| `VEGAPal.COM` | Assembled binary, ready to run |
+| `VEGAPal copy.asm` | Old v1.0 one-shot version (non-TSR, for reference) |
 
 ---
 
 ## Relation to PC1PAL
 
-[PC1PAL](../PC1-Palette-Loader/) does the same job for the **Olivetti PC1**, which uses a Yamaha V6355D video chip with its own palette ports (0DDh/0DEh) and 3-bit colour channels. EVGAPAL targets standard **EGA/VGA** cards using the standard VGA DAC and EGA ATC hardware instead. The palette text file format is identical between both tools.
+[PC1PAL](../PC1-Palette-Loader/) does the same job for the **Olivetti PC1**, which uses a Yamaha V6355D video chip with its own palette ports (0DDh/0DEh) and 3-bit colour channels. VEGAPal targets standard **EGA/VGA** cards using the standard VGA DAC and EGA ATC hardware instead. The palette text file format is identical between both tools.
