@@ -1,0 +1,432 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 985" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#1a3a5c"/>
+      <stop offset="100%" stop-color="#0a1a2e"/>
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d4a020"/>
+      <stop offset="30%" stop-color="#f0d060"/>
+      <stop offset="50%" stop-color="#ffe880"/>
+      <stop offset="70%" stop-color="#f0d060"/>
+      <stop offset="100%" stop-color="#d4a020"/>
+    </linearGradient>
+    <linearGradient id="titleGold" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a07010"/>
+      <stop offset="20%" stop-color="#d4a020"/>
+      <stop offset="50%" stop-color="#ffe880"/>
+      <stop offset="80%" stop-color="#d4a020"/>
+      <stop offset="100%" stop-color="#a07010"/>
+    </linearGradient>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="20" height="20" fill="none"/>
+      <line x1="20" y1="0" x2="20" y2="20" stroke="#ffffff08" stroke-width="0.5"/>
+      <line x1="0" y1="20" x2="20" y2="20" stroke="#ffffff08" stroke-width="0.5"/>
+    </pattern>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bigGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrowGold" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#d4a020"/>
+    </marker>
+    <marker id="arrowC1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#40a0ff"/>
+    </marker>
+    <marker id="arrowC2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#ff5050"/>
+    </marker>
+    <marker id="arrowC3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#ffcc66"/>
+    </marker>
+    <marker id="arrowC0" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#888888"/>
+    </marker>
+  </defs>
+
+  <!-- ==================== BACKGROUND ==================== -->
+  <rect width="1600" height="900" fill="url(#bgGrad)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+
+  <!-- ==================== OUTER GOLD BORDER ==================== -->
+  <rect x="15" y="15" width="1570" height="955" rx="8" ry="8"
+        fill="none" stroke="url(#goldGrad)" stroke-width="4"/>
+  <rect x="22" y="22" width="1556" height="941" rx="6" ry="6"
+        fill="none" stroke="#d4a02060" stroke-width="1"/>
+  <circle cx="15" cy="15" r="6" fill="#d4a020" opacity="0.6"/>
+  <circle cx="1585" cy="15" r="6" fill="#d4a020" opacity="0.6"/>
+  <circle cx="15" cy="970" r="6" fill="#d4a020" opacity="0.6"/>
+  <circle cx="1585" cy="970" r="6" fill="#d4a020" opacity="0.6"/>
+
+  <!-- ==================== TITLE ==================== -->
+  <rect x="250" y="30" width="1100" height="42" rx="4" fill="#0a1a2e" stroke="url(#titleGold)" stroke-width="2"/>
+  <text x="800" y="58" text-anchor="middle" font-size="22" font-weight="bold"
+        fill="url(#titleGold)" filter="url(#glow)" font-variant="small-caps"
+        letter-spacing="3">PalSwap: How 4 Colors Cover Every CGA Palette</text>
+
+  <!-- ==================== SUBTITLE TEXT ==================== -->
+  <text x="800" y="95" text-anchor="middle" font-size="15" fill="#aaaaaa">
+    Games pick one of 4 palette variants — PalSwap pre-loads ALL of them into DAC 0–15
+  </text>
+
+  <!-- ====================================================================== -->
+  <!-- LEFT SIDE: THE 4 USER COLORS (what the user specifies)                 -->
+  <!-- ====================================================================== -->
+  <rect x="45" y="115" width="230" height="375" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2"/>
+  <text x="160" y="142" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">YOUR 4 COLORS</text>
+  <line x1="60" y1="150" x2="260" y2="150" stroke="#d4a02040" stroke-width="1"/>
+
+  <!-- Color 0 - Background -->
+  <rect x="65" y="165" width="190" height="55" rx="6" fill="#222222" stroke="#555555" stroke-width="2"/>
+  <rect x="75" y="175" width="35" height="35" rx="4" fill="#111111" stroke="#444444" stroke-width="1.5"/>
+  <text x="125" y="191" font-size="15" fill="#cccccc" font-weight="bold">Color 0</text>
+  <text x="125" y="207" font-size="11" fill="#888888">Background</text>
+
+  <!-- Color 1 -->
+  <rect x="65" y="230" width="190" height="55" rx="6" fill="#102040" stroke="#2060c0" stroke-width="2"/>
+  <rect x="75" y="240" width="35" height="35" rx="4" fill="#3090ee" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="125" y="256" font-size="15" fill="#60b0ff" font-weight="bold">Color 1</text>
+  <text x="125" y="272" font-size="11" fill="#4080c0">e.g. Blue</text>
+
+  <!-- Color 2 -->
+  <rect x="65" y="295" width="190" height="55" rx="6" fill="#301010" stroke="#c02020" stroke-width="2"/>
+  <rect x="75" y="305" width="35" height="35" rx="4" fill="#ee4040" stroke="#c02020" stroke-width="1.5"/>
+  <text x="125" y="321" font-size="15" fill="#ff6060" font-weight="bold">Color 2</text>
+  <text x="125" y="337" font-size="11" fill="#c04040">e.g. Red</text>
+
+  <!-- Color 3 -->
+  <rect x="65" y="360" width="190" height="55" rx="6" fill="#302010" stroke="#cc8830" stroke-width="2"/>
+  <rect x="75" y="370" width="35" height="35" rx="4" fill="#eebb44" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="125" y="386" font-size="15" fill="#ffcc66" font-weight="bold">Color 3</text>
+  <text x="125" y="402" font-size="11" fill="#c09030">e.g. Yellow</text>
+
+  <text x="160" y="460" text-anchor="middle" font-size="11" fill="#50ff80" font-style="italic">Set via /c: or preset</text>
+  <text x="160" y="478" text-anchor="middle" font-size="11" fill="#50ff80" font-style="italic">or palette file</text>
+
+  <!-- ====================================================================== -->
+  <!-- CENTER: THE 4 PALETTE VARIANTS - large visual blocks                    -->
+  <!-- ====================================================================== -->
+
+  <!-- ── Palette 1 High ── -->
+  <rect x="320" y="115" width="590" height="170" rx="6" fill="#0d1f35" stroke="#50ff80" stroke-width="2.5"/>
+  <rect x="325" y="120" width="580" height="28" rx="3" fill="#50ff8018"/>
+  <text x="615" y="137" text-anchor="middle" font-size="16" fill="#50ff80" font-weight="bold" letter-spacing="1">PALETTE 1 HIGH — The Most Common</text>
+  <text x="615" y="153" text-anchor="middle" font-size="11" fill="#50ff80" font-style="italic">Cyan / Magenta / White</text>
+
+  <!-- Pixel value labels -->
+  <text x="380" y="175" text-anchor="middle" font-size="12" fill="#888888">Pixel 0</text>
+  <text x="520" y="175" text-anchor="middle" font-size="12" fill="#888888">Pixel 1</text>
+  <text x="660" y="175" text-anchor="middle" font-size="12" fill="#888888">Pixel 2</text>
+  <text x="800" y="175" text-anchor="middle" font-size="12" fill="#888888">Pixel 3</text>
+
+  <!-- Big color squares -->
+  <rect x="340" y="182" width="80" height="60" rx="5" fill="#111111" stroke="#555555" stroke-width="2"/>
+  <rect x="480" y="182" width="80" height="60" rx="5" fill="#3090ee" stroke="#2060c0" stroke-width="2"/>
+  <rect x="620" y="182" width="80" height="60" rx="5" fill="#ee4040" stroke="#c02020" stroke-width="2"/>
+  <rect x="760" y="182" width="80" height="60" rx="5" fill="#eebb44" stroke="#cc8830" stroke-width="2"/>
+
+  <!-- DAC entry label inside squares -->
+  <text x="380" y="218" text-anchor="middle" font-size="14" fill="#aaaaaa" font-weight="bold">DAC 0</text>
+  <text x="520" y="218" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 11</text>
+  <text x="660" y="218" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 13</text>
+  <text x="800" y="218" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 15</text>
+
+  <!-- Arrow labels: which user color fills this -->
+  <text x="380" y="260" text-anchor="middle" font-size="11" fill="#888888">← C0</text>
+  <text x="520" y="260" text-anchor="middle" font-size="11" fill="#60b0ff">← C1</text>
+  <text x="660" y="260" text-anchor="middle" font-size="11" fill="#ff6060">← C2</text>
+  <text x="800" y="260" text-anchor="middle" font-size="11" fill="#ffcc66">← C3</text>
+
+  <!-- "STAR" annotation -->
+  <text x="875" y="138" font-size="22" fill="#50ff80" filter="url(#bigGlow)" text-anchor="middle">★</text>
+  <text x="875" y="155" font-size="10" fill="#50ff80" font-weight="bold" text-anchor="middle">Most games</text>
+  <text x="875" y="167" font-size="10" fill="#50ff80" font-weight="bold" text-anchor="middle">use this</text>
+
+  <!-- ── Palette 0 High ── -->
+  <rect x="320" y="295" width="590" height="155" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2"/>
+  <rect x="325" y="300" width="580" height="24" rx="3" fill="#d4a02010"/>
+  <text x="615" y="314" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 0 HIGH</text>
+  <text x="615" y="330" text-anchor="middle" font-size="11" fill="#ccaa44" font-style="italic">Green / Red / Yellow</text>
+
+  <text x="380" y="348" text-anchor="middle" font-size="12" fill="#888888">Pixel 0</text>
+  <text x="520" y="348" text-anchor="middle" font-size="12" fill="#888888">Pixel 1</text>
+  <text x="660" y="348" text-anchor="middle" font-size="12" fill="#888888">Pixel 2</text>
+  <text x="800" y="348" text-anchor="middle" font-size="12" fill="#888888">Pixel 3</text>
+
+  <rect x="340" y="355" width="80" height="55" rx="5" fill="#111111" stroke="#555555" stroke-width="2"/>
+  <rect x="480" y="355" width="80" height="55" rx="5" fill="#3090ee" stroke="#2060c0" stroke-width="2"/>
+  <rect x="620" y="355" width="80" height="55" rx="5" fill="#ee4040" stroke="#c02020" stroke-width="2"/>
+  <rect x="760" y="355" width="80" height="55" rx="5" fill="#eebb44" stroke="#cc8830" stroke-width="2"/>
+
+  <text x="380" y="388" text-anchor="middle" font-size="14" fill="#aaaaaa" font-weight="bold">DAC 0</text>
+  <text x="520" y="388" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 10</text>
+  <text x="660" y="388" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 12</text>
+  <text x="800" y="388" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 14</text>
+
+  <text x="380" y="428" text-anchor="middle" font-size="11" fill="#888888">← C0</text>
+  <text x="520" y="428" text-anchor="middle" font-size="11" fill="#60b0ff">← C1</text>
+  <text x="660" y="428" text-anchor="middle" font-size="11" fill="#ff6060">← C2</text>
+  <text x="800" y="428" text-anchor="middle" font-size="11" fill="#ffcc66">← C3</text>
+
+  <!-- ── Palette 1 Low ── -->
+  <rect x="320" y="460" width="590" height="155" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2"/>
+  <rect x="325" y="465" width="580" height="24" rx="3" fill="#d4a02010"/>
+  <text x="615" y="479" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 1 LOW</text>
+  <text x="615" y="495" text-anchor="middle" font-size="11" fill="#ccaa44" font-style="italic">Dark Cyan / Dark Magenta / Gray</text>
+
+  <text x="380" y="513" text-anchor="middle" font-size="12" fill="#888888">Pixel 0</text>
+  <text x="520" y="513" text-anchor="middle" font-size="12" fill="#888888">Pixel 1</text>
+  <text x="660" y="513" text-anchor="middle" font-size="12" fill="#888888">Pixel 2</text>
+  <text x="800" y="513" text-anchor="middle" font-size="12" fill="#888888">Pixel 3</text>
+
+  <rect x="340" y="520" width="80" height="55" rx="5" fill="#111111" stroke="#555555" stroke-width="2"/>
+  <rect x="480" y="520" width="80" height="55" rx="5" fill="#3090ee" stroke="#2060c0" stroke-width="2"/>
+  <rect x="620" y="520" width="80" height="55" rx="5" fill="#ee4040" stroke="#c02020" stroke-width="2"/>
+  <rect x="760" y="520" width="80" height="55" rx="5" fill="#eebb44" stroke="#cc8830" stroke-width="2"/>
+
+  <text x="380" y="553" text-anchor="middle" font-size="14" fill="#aaaaaa" font-weight="bold">DAC 0</text>
+  <text x="520" y="553" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 3</text>
+  <text x="660" y="553" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 5</text>
+  <text x="800" y="553" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 7</text>
+
+  <text x="380" y="593" text-anchor="middle" font-size="11" fill="#888888">← C0</text>
+  <text x="520" y="593" text-anchor="middle" font-size="11" fill="#60b0ff">← C1</text>
+  <text x="660" y="593" text-anchor="middle" font-size="11" fill="#ff6060">← C2</text>
+  <text x="800" y="593" text-anchor="middle" font-size="11" fill="#ffcc66">← C3</text>
+
+  <!-- ── Palette 0 Low ── -->
+  <rect x="320" y="625" width="590" height="155" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2"/>
+  <rect x="325" y="630" width="580" height="24" rx="3" fill="#d4a02010"/>
+  <text x="615" y="644" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 0 LOW</text>
+  <text x="615" y="660" text-anchor="middle" font-size="11" fill="#ccaa44" font-style="italic">Dark Green / Dark Red / Brown</text>
+
+  <text x="380" y="678" text-anchor="middle" font-size="12" fill="#888888">Pixel 0</text>
+  <text x="520" y="678" text-anchor="middle" font-size="12" fill="#888888">Pixel 1</text>
+  <text x="660" y="678" text-anchor="middle" font-size="12" fill="#888888">Pixel 2</text>
+  <text x="800" y="678" text-anchor="middle" font-size="12" fill="#888888">Pixel 3</text>
+
+  <rect x="340" y="685" width="80" height="55" rx="5" fill="#111111" stroke="#555555" stroke-width="2"/>
+  <rect x="480" y="685" width="80" height="55" rx="5" fill="#3090ee" stroke="#2060c0" stroke-width="2"/>
+  <rect x="620" y="685" width="80" height="55" rx="5" fill="#ee4040" stroke="#c02020" stroke-width="2"/>
+  <rect x="760" y="685" width="80" height="55" rx="5" fill="#eebb44" stroke="#cc8830" stroke-width="2"/>
+
+  <text x="380" y="718" text-anchor="middle" font-size="14" fill="#aaaaaa" font-weight="bold">DAC 0</text>
+  <text x="520" y="718" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 2</text>
+  <text x="660" y="718" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 4</text>
+  <text x="800" y="718" text-anchor="middle" font-size="14" fill="white" font-weight="bold">DAC 6</text>
+
+  <text x="380" y="758" text-anchor="middle" font-size="11" fill="#888888">← C0</text>
+  <text x="520" y="758" text-anchor="middle" font-size="11" fill="#60b0ff">← C1</text>
+  <text x="660" y="758" text-anchor="middle" font-size="11" fill="#ff6060">← C2</text>
+  <text x="800" y="758" text-anchor="middle" font-size="11" fill="#ffcc66">← C3</text>
+
+  <!-- ====================================================================== -->
+  <!-- RIGHT SIDE: DAC ENTRY TABLE showing all 16 entries                      -->
+  <!-- ====================================================================== -->
+  <rect x="940" y="115" width="615" height="665" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2"/>
+  <text x="1247" y="142" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">VGA DAC ENTRIES 0–15</text>
+  <line x1="960" y1="150" x2="1535" y2="150" stroke="#d4a02040" stroke-width="1"/>
+
+  <!-- Column headers -->
+  <text x="990" y="170" font-size="12" fill="#d4a020" font-weight="bold">DAC</text>
+  <text x="1045" y="170" font-size="12" fill="#d4a020" font-weight="bold">Color</text>
+  <text x="1130" y="170" font-size="12" fill="#d4a020" font-weight="bold">User</text>
+  <text x="1250" y="170" font-size="12" fill="#d4a020" font-weight="bold">Used By Palette Variant</text>
+  <line x1="960" y1="178" x2="1535" y2="178" stroke="#d4a02030" stroke-width="1"/>
+
+  <!-- DAC 0 -->
+  <rect x="968" y="184" width="25" height="25" rx="3" fill="#111111" stroke="#555555" stroke-width="1"/>
+  <text x="1000" y="201" font-size="13" fill="#cccccc" font-weight="bold">0</text>
+  <text x="1045" y="201" font-size="12" fill="#888888">BG</text>
+  <text x="1130" y="201" font-size="12" fill="#888888">C0</text>
+  <text x="1250" y="201" font-size="12" fill="#aaaaaa">All — shared background</text>
+
+  <!-- DAC 1 -->
+  <rect x="968" y="214" width="25" height="25" rx="3" fill="#3090ee" stroke="#2060c0" stroke-width="1"/>
+  <text x="1000" y="231" font-size="13" fill="#cccccc" font-weight="bold">1</text>
+  <text x="1045" y="231" font-size="12" fill="#60b0ff">█</text>
+  <text x="1130" y="231" font-size="12" fill="#60b0ff">C1</text>
+  <text x="1250" y="231" font-size="12" fill="#ffe880">Our ATC routing</text>
+
+  <!-- DAC 2 -->
+  <rect x="968" y="244" width="25" height="25" rx="3" fill="#3090ee" stroke="#2060c0" stroke-width="1"/>
+  <text x="1000" y="261" font-size="13" fill="#cccccc" font-weight="bold">2</text>
+  <text x="1045" y="261" font-size="12" fill="#60b0ff">█</text>
+  <text x="1130" y="261" font-size="12" fill="#60b0ff">C1</text>
+  <text x="1250" y="261" font-size="12" fill="#aaaaaa">Palette 0 Low — pixel 1</text>
+
+  <!-- DAC 3 -->
+  <rect x="968" y="274" width="25" height="25" rx="3" fill="#3090ee" stroke="#2060c0" stroke-width="1"/>
+  <text x="1000" y="291" font-size="13" fill="#cccccc" font-weight="bold">3</text>
+  <text x="1045" y="291" font-size="12" fill="#60b0ff">█</text>
+  <text x="1130" y="291" font-size="12" fill="#60b0ff">C1</text>
+  <text x="1250" y="291" font-size="12" fill="#aaaaaa">Palette 1 Low — pixel 1</text>
+
+  <!-- DAC 4 -->
+  <rect x="968" y="304" width="25" height="25" rx="3" fill="#ee4040" stroke="#c02020" stroke-width="1"/>
+  <text x="1000" y="321" font-size="13" fill="#cccccc" font-weight="bold">4</text>
+  <text x="1045" y="321" font-size="12" fill="#ff6060">█</text>
+  <text x="1130" y="321" font-size="12" fill="#ff6060">C2</text>
+  <text x="1250" y="321" font-size="12" fill="#aaaaaa">Palette 0 Low — pixel 2</text>
+
+  <!-- DAC 5 -->
+  <rect x="968" y="334" width="25" height="25" rx="3" fill="#ee4040" stroke="#c02020" stroke-width="1"/>
+  <text x="1000" y="351" font-size="13" fill="#cccccc" font-weight="bold">5</text>
+  <text x="1045" y="351" font-size="12" fill="#ff6060">█</text>
+  <text x="1130" y="351" font-size="12" fill="#ff6060">C2</text>
+  <text x="1250" y="351" font-size="12" fill="#aaaaaa">Palette 1 Low — pixel 2</text>
+
+  <!-- DAC 6 -->
+  <rect x="968" y="364" width="25" height="25" rx="3" fill="#eebb44" stroke="#cc8830" stroke-width="1"/>
+  <text x="1000" y="381" font-size="13" fill="#cccccc" font-weight="bold">6</text>
+  <text x="1045" y="381" font-size="12" fill="#ffcc66">█</text>
+  <text x="1130" y="381" font-size="12" fill="#ffcc66">C3</text>
+  <text x="1250" y="381" font-size="12" fill="#aaaaaa">Palette 0 Low — pixel 3</text>
+
+  <!-- DAC 7 -->
+  <rect x="968" y="394" width="25" height="25" rx="3" fill="#eebb44" stroke="#cc8830" stroke-width="1"/>
+  <text x="1000" y="411" font-size="13" fill="#cccccc" font-weight="bold">7</text>
+  <text x="1045" y="411" font-size="12" fill="#ffcc66">█</text>
+  <text x="1130" y="411" font-size="12" fill="#ffcc66">C3</text>
+  <text x="1250" y="411" font-size="12" fill="#aaaaaa">Palette 1 Low — pixel 3</text>
+
+  <!-- DAC 8 -->
+  <rect x="968" y="424" width="25" height="25" rx="3" fill="#ee4040" stroke="#c02020" stroke-width="1"/>
+  <text x="1000" y="441" font-size="13" fill="#cccccc" font-weight="bold">8</text>
+  <text x="1045" y="441" font-size="12" fill="#ff6060">█</text>
+  <text x="1130" y="441" font-size="12" fill="#ff6060">C2</text>
+  <text x="1250" y="441" font-size="12" fill="#ffe880">Our ATC routing</text>
+
+  <!-- DAC 9 -->
+  <rect x="968" y="454" width="25" height="25" rx="3" fill="#eebb44" stroke="#cc8830" stroke-width="1"/>
+  <text x="1000" y="471" font-size="13" fill="#cccccc" font-weight="bold">9</text>
+  <text x="1045" y="471" font-size="12" fill="#ffcc66">█</text>
+  <text x="1130" y="471" font-size="12" fill="#ffcc66">C3</text>
+  <text x="1250" y="471" font-size="12" fill="#ffe880">Our ATC routing</text>
+
+  <!-- DAC 10 -->
+  <rect x="968" y="484" width="25" height="25" rx="3" fill="#3090ee" stroke="#2060c0" stroke-width="1"/>
+  <text x="1000" y="501" font-size="13" fill="#cccccc" font-weight="bold">10</text>
+  <text x="1045" y="501" font-size="12" fill="#60b0ff">█</text>
+  <text x="1130" y="501" font-size="12" fill="#60b0ff">C1</text>
+  <text x="1250" y="501" font-size="12" fill="#aaaaaa">Palette 0 High — pixel 1</text>
+
+  <!-- DAC 11 -->
+  <rect x="968" y="514" width="25" height="25" rx="3" fill="#3090ee" stroke="#2060c0" stroke-width="1"/>
+  <text x="1000" y="531" font-size="13" fill="#cccccc" font-weight="bold">11</text>
+  <text x="1045" y="531" font-size="12" fill="#60b0ff">█</text>
+  <text x="1130" y="531" font-size="12" fill="#60b0ff">C1</text>
+  <text x="1250" y="531" font-size="12" fill="#aaaaaa">Palette 1 High — pixel 1</text>
+
+  <!-- DAC 12 -->
+  <rect x="968" y="544" width="25" height="25" rx="3" fill="#ee4040" stroke="#c02020" stroke-width="1"/>
+  <text x="1000" y="561" font-size="13" fill="#cccccc" font-weight="bold">12</text>
+  <text x="1045" y="561" font-size="12" fill="#ff6060">█</text>
+  <text x="1130" y="561" font-size="12" fill="#ff6060">C2</text>
+  <text x="1250" y="561" font-size="12" fill="#aaaaaa">Palette 0 High — pixel 2</text>
+
+  <!-- DAC 13 -->
+  <rect x="968" y="574" width="25" height="25" rx="3" fill="#ee4040" stroke="#c02020" stroke-width="1"/>
+  <text x="1000" y="591" font-size="13" fill="#cccccc" font-weight="bold">13</text>
+  <text x="1045" y="591" font-size="12" fill="#ff6060">█</text>
+  <text x="1130" y="591" font-size="12" fill="#ff6060">C2</text>
+  <text x="1250" y="591" font-size="12" fill="#aaaaaa">Palette 1 High — pixel 2</text>
+
+  <!-- DAC 14 -->
+  <rect x="968" y="604" width="25" height="25" rx="3" fill="#eebb44" stroke="#cc8830" stroke-width="1"/>
+  <text x="1000" y="621" font-size="13" fill="#cccccc" font-weight="bold">14</text>
+  <text x="1045" y="621" font-size="12" fill="#ffcc66">█</text>
+  <text x="1130" y="621" font-size="12" fill="#ffcc66">C3</text>
+  <text x="1250" y="621" font-size="12" fill="#aaaaaa">Palette 0 High — pixel 3</text>
+
+  <!-- DAC 15 -->
+  <rect x="968" y="634" width="25" height="25" rx="3" fill="#eebb44" stroke="#cc8830" stroke-width="1"/>
+  <text x="1000" y="651" font-size="13" fill="#cccccc" font-weight="bold">15</text>
+  <text x="1045" y="651" font-size="12" fill="#ffcc66">█</text>
+  <text x="1130" y="651" font-size="12" fill="#ffcc66">C3</text>
+  <text x="1250" y="651" font-size="12" fill="#aaaaaa">Palette 1 High — pixel 3</text>
+
+  <!-- "Our ATC" highlight bars -->
+  <rect x="963" y="213" width="570" height="27" rx="2" fill="#ffe88008" stroke="none"/>
+  <rect x="963" y="423" width="570" height="27" rx="2" fill="#ffe88008" stroke="none"/>
+  <rect x="963" y="453" width="570" height="27" rx="2" fill="#ffe88008" stroke="none"/>
+
+  <!-- Legend at bottom of DAC panel -->
+  <line x1="960" y1="670" x2="1535" y2="670" stroke="#d4a02030" stroke-width="1"/>
+  <rect x="970" y="680" width="14" height="14" rx="2" fill="#ffe88030" stroke="#ffe880" stroke-width="1"/>
+  <text x="990" y="692" font-size="12" fill="#ffe880">= Our ATC routing (DAC 1, 8, 9 — conflict-free, no overlap)</text>
+  <text x="970" y="712" font-size="12" fill="#aaaaaa">Standard entries = used by games selecting Palette 0/1 High/Low</text>
+  <text x="970" y="732" font-size="12" fill="#50ff80" font-weight="bold">All 16 hold the right color — no matter what the game picks!</text>
+
+  <!-- ==================== FOOTER: HOW IT PERSISTS ==================== -->
+  <rect x="45" y="795" width="1510" height="175" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2"/>
+  <text x="800" y="822" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">HOW IT PERSISTS</text>
+  <line x1="65" y1="830" x2="1535" y2="830" stroke="#d4a02040" stroke-width="1"/>
+
+  <!-- VGA flow -->
+  <rect x="80" y="845" width="130" height="40" rx="5" fill="#4CAF50" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="145" y="870" text-anchor="middle" font-size="13" fill="white" font-weight="bold">PalSwap runs</text>
+
+  <line x1="215" y1="865" x2="275" y2="865" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="280" y="845" width="180" height="40" rx="5" fill="#1565C0" stroke="#0D47A1" stroke-width="1.5"/>
+  <text x="370" y="870" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Writes DAC 0-15</text>
+
+  <line x1="465" y1="865" x2="525" y2="865" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="530" y="845" width="220" height="40" rx="5" fill="#1565C0" stroke="#0D47A1" stroke-width="1.5"/>
+  <text x="640" y="870" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Programs ATC[0-3]</text>
+
+  <line x1="755" y1="865" x2="815" y2="865" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="820" y="845" width="280" height="40" rx="5" fill="#E65100" stroke="#BF360C" stroke-width="1.5"/>
+  <text x="960" y="864" text-anchor="middle" font-size="12" fill="white" font-weight="bold">INT 10h AX=1201h BL=31h</text>
+  <text x="960" y="880" text-anchor="middle" font-size="10" fill="#ffcc80">Disables BIOS palette reload</text>
+
+  <line x1="1105" y1="865" x2="1165" y2="865" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="1170" y="845" width="150" height="40" rx="5" fill="#4CAF50" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="1245" y="870" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Game starts</text>
+
+  <!-- Explanatory text -->
+  <text x="80" y="915" font-size="13" fill="#cccccc">When the game calls INT 10h AH=00 to set CGA mode 4, the BIOS normally reloads the default palette.</text>
+  <text x="80" y="935" font-size="13" fill="#50ff80">With 1201h/31h active, the BIOS skips this — our DAC values survive the mode switch.</text>
+  <text x="80" y="955" font-size="13" fill="#cccccc">The game then calls AH=0Bh to select its palette, which routes ATC to our pre-loaded DAC entries.</text>
+
+  <!-- ====================================================================== -->
+  <!-- CONNECTING ARROWS from User Colors to Palette blocks                    -->
+  <!-- ====================================================================== -->
+
+  <!-- C0 arrows (dashed, subtle) -->
+  <line x1="255" y1="192" x2="336" y2="192" stroke="#888888" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowC0)"/>
+
+  <!-- C1 arrows -->
+  <line x1="255" y1="257" x2="290" y2="257" stroke="#40a0ff" stroke-width="2" opacity="0.5"/>
+  <line x1="290" y1="195" x2="290" y2="720" stroke="#40a0ff" stroke-width="2" stroke-dasharray="5,4" opacity="0.4"/>
+  <!-- Horizontal taps to each palette's pixel-1 block -->
+  <line x1="290" y1="212" x2="476" y2="212" stroke="#40a0ff" stroke-width="1.5" marker-end="url(#arrowC1)" opacity="0.6"/>
+  <line x1="290" y1="382" x2="476" y2="382" stroke="#40a0ff" stroke-width="1.5" marker-end="url(#arrowC1)" opacity="0.6"/>
+  <line x1="290" y1="547" x2="476" y2="547" stroke="#40a0ff" stroke-width="1.5" marker-end="url(#arrowC1)" opacity="0.6"/>
+  <line x1="290" y1="712" x2="476" y2="712" stroke="#40a0ff" stroke-width="1.5" marker-end="url(#arrowC1)" opacity="0.6"/>
+
+  <!-- C2 arrows -->
+  <line x1="255" y1="322" x2="300" y2="322" stroke="#ff5050" stroke-width="2" opacity="0.5"/>
+  <line x1="300" y1="195" x2="300" y2="720" stroke="#ff5050" stroke-width="2" stroke-dasharray="5,4" opacity="0.4"/>
+  <line x1="300" y1="212" x2="616" y2="212" stroke="#ff5050" stroke-width="1.5" marker-end="url(#arrowC2)" opacity="0.6"/>
+  <line x1="300" y1="382" x2="616" y2="382" stroke="#ff5050" stroke-width="1.5" marker-end="url(#arrowC2)" opacity="0.6"/>
+  <line x1="300" y1="547" x2="616" y2="547" stroke="#ff5050" stroke-width="1.5" marker-end="url(#arrowC2)" opacity="0.6"/>
+  <line x1="300" y1="712" x2="616" y2="712" stroke="#ff5050" stroke-width="1.5" marker-end="url(#arrowC2)" opacity="0.6"/>
+
+  <!-- C3 arrows -->
+  <line x1="255" y1="387" x2="310" y2="387" stroke="#ffcc66" stroke-width="2" opacity="0.5"/>
+  <line x1="310" y1="195" x2="310" y2="720" stroke="#ffcc66" stroke-width="2" stroke-dasharray="5,4" opacity="0.4"/>
+  <line x1="310" y1="212" x2="756" y2="212" stroke="#ffcc66" stroke-width="1.5" marker-end="url(#arrowC3)" opacity="0.6"/>
+  <line x1="310" y1="382" x2="756" y2="382" stroke="#ffcc66" stroke-width="1.5" marker-end="url(#arrowC3)" opacity="0.6"/>
+  <line x1="310" y1="547" x2="756" y2="547" stroke="#ffcc66" stroke-width="1.5" marker-end="url(#arrowC3)" opacity="0.6"/>
+  <line x1="310" y1="712" x2="756" y2="712" stroke="#ffcc66" stroke-width="1.5" marker-end="url(#arrowC3)" opacity="0.6"/>
+
+</svg>
