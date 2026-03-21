@@ -1,0 +1,410 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <!-- Background texture gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#1a3a5c"/>
+      <stop offset="100%" stop-color="#0a1a2e"/>
+    </radialGradient>
+    <!-- Gold gradient for borders -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d4a020"/>
+      <stop offset="30%" stop-color="#f0d060"/>
+      <stop offset="50%" stop-color="#ffe880"/>
+      <stop offset="70%" stop-color="#f0d060"/>
+      <stop offset="100%" stop-color="#d4a020"/>
+    </linearGradient>
+    <!-- Gold gradient for title bar -->
+    <linearGradient id="titleGold" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a07010"/>
+      <stop offset="20%" stop-color="#d4a020"/>
+      <stop offset="50%" stop-color="#ffe880"/>
+      <stop offset="80%" stop-color="#d4a020"/>
+      <stop offset="100%" stop-color="#a07010"/>
+    </linearGradient>
+    <!-- Grid pattern for background texture -->
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="20" height="20" fill="none"/>
+      <line x1="20" y1="0" x2="20" y2="20" stroke="#ffffff08" stroke-width="0.5"/>
+      <line x1="0" y1="20" x2="20" y2="20" stroke="#ffffff08" stroke-width="0.5"/>
+    </pattern>
+    <!-- Glow for title -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Arrow markers -->
+    <marker id="arrowGold" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#d4a020"/>
+    </marker>
+    <marker id="arrowWhite" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#cccccc"/>
+    </marker>
+    <!-- Color 0 (background) gradient -->
+    <linearGradient id="c0Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#444444"/>
+      <stop offset="100%" stop-color="#222222"/>
+    </linearGradient>
+    <!-- Color 1 gradient -->
+    <linearGradient id="c1Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#40a0ff"/>
+      <stop offset="100%" stop-color="#2060c0"/>
+    </linearGradient>
+    <!-- Color 2 gradient -->
+    <linearGradient id="c2Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff5050"/>
+      <stop offset="100%" stop-color="#c02020"/>
+    </linearGradient>
+    <!-- Color 3 gradient -->
+    <linearGradient id="c3Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffcc66"/>
+      <stop offset="100%" stop-color="#cc8830"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ==================== BACKGROUND ==================== -->
+  <rect width="1600" height="900" fill="url(#bgGrad)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+
+  <!-- ==================== OUTER GOLD BORDER ==================== -->
+  <rect x="15" y="15" width="1570" height="870" rx="8" ry="8"
+        fill="none" stroke="url(#goldGrad)" stroke-width="4"/>
+  <rect x="22" y="22" width="1556" height="856" rx="6" ry="6"
+        fill="none" stroke="#d4a02060" stroke-width="1"/>
+
+  <!-- Corner ornaments -->
+  <circle cx="15" cy="15" r="6" fill="#d4a020" opacity="0.6"/>
+  <circle cx="1585" cy="15" r="6" fill="#d4a020" opacity="0.6"/>
+  <circle cx="15" cy="885" r="6" fill="#d4a020" opacity="0.6"/>
+  <circle cx="1585" cy="885" r="6" fill="#d4a020" opacity="0.6"/>
+
+  <!-- ==================== TITLE BAR ==================== -->
+  <rect x="190" y="30" width="1220" height="42" rx="4" fill="#0a1a2e" stroke="url(#titleGold)" stroke-width="2"/>
+  <text x="800" y="58" text-anchor="middle" font-size="22" font-weight="bold"
+        fill="url(#titleGold)" filter="url(#glow)" font-variant="small-caps"
+        letter-spacing="3">PalSwap: VGA DAC Entry Map for CGA Mode 4</text>
+  <line x1="210" y1="68" x2="1390" y2="68" stroke="#d4a02040" stroke-width="1"/>
+  <text x="800" y="90" text-anchor="middle" font-size="16" fill="#aaaaaa" font-style="italic">All 16 DAC entries pre-loaded — every CGA palette variant gets the right user color</text>
+
+  <!-- ==================== USER COLORS PANEL (right side) ==================== -->
+  <rect x="1180" y="115" width="370" height="200" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="1365" y="140" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">USER COLORS</text>
+  <line x1="1200" y1="148" x2="1530" y2="148" stroke="#d4a02040" stroke-width="1"/>
+
+  <!-- Color 0 -->
+  <rect x="1200" y="160" width="40" height="30" rx="4" fill="url(#c0Grad)" stroke="#666666" stroke-width="1.5"/>
+  <text x="1250" y="180" font-size="14" fill="#cccccc" font-weight="bold">Color 0</text>
+  <text x="1400" y="180" font-size="13" fill="#888888">Background (black)</text>
+
+  <!-- Color 1 -->
+  <rect x="1200" y="198" width="40" height="30" rx="4" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="1250" y="218" font-size="14" fill="#40a0ff" font-weight="bold">Color 1</text>
+  <text x="1400" y="218" font-size="13" fill="#888888">e.g. Blue</text>
+
+  <!-- Color 2 -->
+  <rect x="1200" y="236" width="40" height="30" rx="4" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1.5"/>
+  <text x="1250" y="256" font-size="14" fill="#ff5050" font-weight="bold">Color 2</text>
+  <text x="1400" y="256" font-size="13" fill="#888888">e.g. Red</text>
+
+  <!-- Color 3 -->
+  <rect x="1200" y="274" width="40" height="30" rx="4" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="1250" y="294" font-size="14" fill="#ffcc66" font-weight="bold">Color 3</text>
+  <text x="1400" y="294" font-size="13" fill="#888888">e.g. Skin</text>
+
+  <!-- ==================== DAC TABLE PANEL ==================== -->
+  <rect x="45" y="115" width="1115" height="200" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="602" y="140" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">VGA DAC ENTRIES 0–15</text>
+  <line x1="65" y1="148" x2="1140" y2="148" stroke="#d4a02040" stroke-width="1"/>
+
+  <!-- DAC entry blocks — row of 16 -->
+  <!-- DAC 0 = Color 0 -->
+  <rect x="62" y="160" width="60" height="55" rx="4" fill="url(#c0Grad)" stroke="#666666" stroke-width="1.5"/>
+  <text x="92" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 0</text>
+  <text x="92" y="205" text-anchor="middle" font-size="10" fill="#aaaaaa">C0</text>
+
+  <!-- DAC 1 = Color 1 -->
+  <rect x="128" y="160" width="60" height="55" rx="4" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="158" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 1</text>
+  <text x="158" y="205" text-anchor="middle" font-size="10" fill="#c0e0ff">C1</text>
+
+  <!-- DAC 2 = Color 1 -->
+  <rect x="194" y="160" width="60" height="55" rx="4" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="224" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 2</text>
+  <text x="224" y="205" text-anchor="middle" font-size="10" fill="#c0e0ff">C1</text>
+
+  <!-- DAC 3 = Color 1 -->
+  <rect x="260" y="160" width="60" height="55" rx="4" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="290" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 3</text>
+  <text x="290" y="205" text-anchor="middle" font-size="10" fill="#c0e0ff">C1</text>
+
+  <!-- DAC 4 = Color 2 -->
+  <rect x="326" y="160" width="60" height="55" rx="4" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1.5"/>
+  <text x="356" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 4</text>
+  <text x="356" y="205" text-anchor="middle" font-size="10" fill="#ffc0c0">C2</text>
+
+  <!-- DAC 5 = Color 2 -->
+  <rect x="392" y="160" width="60" height="55" rx="4" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1.5"/>
+  <text x="422" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 5</text>
+  <text x="422" y="205" text-anchor="middle" font-size="10" fill="#ffc0c0">C2</text>
+
+  <!-- DAC 6 = Color 3 -->
+  <rect x="458" y="160" width="60" height="55" rx="4" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="488" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 6</text>
+  <text x="488" y="205" text-anchor="middle" font-size="10" fill="#fff0c0">C3</text>
+
+  <!-- DAC 7 = Color 3 -->
+  <rect x="524" y="160" width="60" height="55" rx="4" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="554" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 7</text>
+  <text x="554" y="205" text-anchor="middle" font-size="10" fill="#fff0c0">C3</text>
+
+  <!-- DAC 8 = Color 2 -->
+  <rect x="590" y="160" width="60" height="55" rx="4" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1.5"/>
+  <text x="620" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 8</text>
+  <text x="620" y="205" text-anchor="middle" font-size="10" fill="#ffc0c0">C2</text>
+
+  <!-- DAC 9 = Color 3 -->
+  <rect x="656" y="160" width="60" height="55" rx="4" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="686" y="180" text-anchor="middle" font-size="12" fill="white" font-weight="bold">DAC 9</text>
+  <text x="686" y="205" text-anchor="middle" font-size="10" fill="#fff0c0">C3</text>
+
+  <!-- DAC 10 = Color 1 -->
+  <rect x="722" y="160" width="60" height="55" rx="4" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="752" y="180" text-anchor="middle" font-size="11" fill="white" font-weight="bold">DAC 10</text>
+  <text x="752" y="205" text-anchor="middle" font-size="10" fill="#c0e0ff">C1</text>
+
+  <!-- DAC 11 = Color 1 -->
+  <rect x="788" y="160" width="60" height="55" rx="4" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1.5"/>
+  <text x="818" y="180" text-anchor="middle" font-size="11" fill="white" font-weight="bold">DAC 11</text>
+  <text x="818" y="205" text-anchor="middle" font-size="10" fill="#c0e0ff">C1</text>
+
+  <!-- DAC 12 = Color 2 -->
+  <rect x="854" y="160" width="60" height="55" rx="4" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1.5"/>
+  <text x="884" y="180" text-anchor="middle" font-size="11" fill="white" font-weight="bold">DAC 12</text>
+  <text x="884" y="205" text-anchor="middle" font-size="10" fill="#ffc0c0">C2</text>
+
+  <!-- DAC 13 = Color 2 -->
+  <rect x="920" y="160" width="60" height="55" rx="4" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1.5"/>
+  <text x="950" y="180" text-anchor="middle" font-size="11" fill="white" font-weight="bold">DAC 13</text>
+  <text x="950" y="205" text-anchor="middle" font-size="10" fill="#ffc0c0">C2</text>
+
+  <!-- DAC 14 = Color 3 -->
+  <rect x="986" y="160" width="60" height="55" rx="4" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="1016" y="180" text-anchor="middle" font-size="11" fill="white" font-weight="bold">DAC 14</text>
+  <text x="1016" y="205" text-anchor="middle" font-size="10" fill="#fff0c0">C3</text>
+
+  <!-- DAC 15 = Color 3 -->
+  <rect x="1052" y="160" width="60" height="55" rx="4" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1.5"/>
+  <text x="1082" y="180" text-anchor="middle" font-size="11" fill="white" font-weight="bold">DAC 15</text>
+  <text x="1082" y="205" text-anchor="middle" font-size="10" fill="#fff0c0">C3</text>
+
+  <!-- Bracket annotations under DAC entries -->
+  <text x="92" y="232" text-anchor="middle" font-size="9" fill="#888888">BG</text>
+  <text x="158" y="232" text-anchor="middle" font-size="9" fill="#888888">ATC</text>
+  <text x="224" y="232" text-anchor="middle" font-size="9" fill="#888888">P0L</text>
+  <text x="290" y="232" text-anchor="middle" font-size="9" fill="#888888">P1L</text>
+  <text x="356" y="232" text-anchor="middle" font-size="9" fill="#888888">P0L</text>
+  <text x="422" y="232" text-anchor="middle" font-size="9" fill="#888888">P1L</text>
+  <text x="488" y="232" text-anchor="middle" font-size="9" fill="#888888">P0L</text>
+  <text x="554" y="232" text-anchor="middle" font-size="9" fill="#888888">P1L</text>
+  <text x="620" y="232" text-anchor="middle" font-size="9" fill="#888888">ATC</text>
+  <text x="686" y="232" text-anchor="middle" font-size="9" fill="#888888">ATC</text>
+  <text x="752" y="232" text-anchor="middle" font-size="9" fill="#888888">P0H</text>
+  <text x="818" y="232" text-anchor="middle" font-size="9" fill="#888888">P1H</text>
+  <text x="884" y="232" text-anchor="middle" font-size="9" fill="#888888">P0H</text>
+  <text x="950" y="232" text-anchor="middle" font-size="9" fill="#888888">P1H</text>
+  <text x="1016" y="232" text-anchor="middle" font-size="9" fill="#888888">P0H</text>
+  <text x="1082" y="232" text-anchor="middle" font-size="9" fill="#888888">P1H</text>
+
+  <!-- Palette underline groupings -->
+  <!-- Low intensity group (DAC 2-7) -->
+  <line x1="194" y1="244" x2="583" y2="244" stroke="#a0a0a0" stroke-width="1.5"/>
+  <text x="389" y="258" text-anchor="middle" font-size="11" fill="#a0a0a0" font-style="italic">Low Intensity Palettes</text>
+
+  <!-- Our ATC group (DAC 1, 8, 9) -->
+  <line x1="128" y1="269" x2="187" y2="269" stroke="#ffe880" stroke-width="1.5"/>
+  <line x1="590" y1="269" x2="715" y2="269" stroke="#ffe880" stroke-width="1.5"/>
+  <text x="420" y="283" text-anchor="middle" font-size="11" fill="#ffe880" font-style="italic">Our ATC Routing (DAC 1, 8, 9)</text>
+
+  <!-- High intensity group (DAC 10-15) -->
+  <line x1="722" y1="244" x2="1111" y2="244" stroke="#a0a0a0" stroke-width="1.5"/>
+  <text x="917" y="258" text-anchor="middle" font-size="11" fill="#a0a0a0" font-style="italic">High Intensity Palettes</text>
+
+  <!-- ==================== PALETTE ROUTING PANELS ==================== -->
+
+  <!-- Palette 1 High (most common) -->
+  <rect x="45" y="340" width="370" height="160" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="230" y="365" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 1 HIGH</text>
+  <text x="230" y="382" text-anchor="middle" font-size="12" fill="#50ff80" font-style="italic">Most Common — Cyan / Magenta / White</text>
+  <line x1="65" y1="390" x2="395" y2="390" stroke="#d4a02040" stroke-width="1"/>
+
+  <text x="70" y="415" font-size="13" fill="#cccccc">Pixel 0 (BG)</text>
+  <text x="210" y="415" font-size="13" fill="#cccccc">→ ATC[0]=0</text>
+  <text x="320" y="415" font-size="13" fill="#40a0ff">→ DAC 0</text>
+  <rect x="380" y="403" width="18" height="16" rx="2" fill="url(#c0Grad)" stroke="#666" stroke-width="1"/>
+
+  <text x="70" y="438" font-size="13" fill="#cccccc">Pixel 1</text>
+  <text x="210" y="438" font-size="13" fill="#cccccc">→ ATC[1]=11</text>
+  <text x="320" y="438" font-size="13" fill="#40a0ff">→ DAC 11</text>
+  <rect x="380" y="426" width="18" height="16" rx="2" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1"/>
+
+  <text x="70" y="461" font-size="13" fill="#cccccc">Pixel 2</text>
+  <text x="210" y="461" font-size="13" fill="#cccccc">→ ATC[2]=13</text>
+  <text x="320" y="461" font-size="13" fill="#ff5050">→ DAC 13</text>
+  <rect x="380" y="449" width="18" height="16" rx="2" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1"/>
+
+  <text x="70" y="484" font-size="13" fill="#cccccc">Pixel 3</text>
+  <text x="210" y="484" font-size="13" fill="#cccccc">→ ATC[3]=15</text>
+  <text x="320" y="484" font-size="13" fill="#ffcc66">→ DAC 15</text>
+  <rect x="380" y="472" width="18" height="16" rx="2" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1"/>
+
+  <!-- Palette 0 High -->
+  <rect x="430" y="340" width="370" height="160" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="615" y="365" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 0 HIGH</text>
+  <text x="615" y="382" text-anchor="middle" font-size="12" fill="#aaaaaa" font-style="italic">Green / Red / Yellow</text>
+  <line x1="450" y1="390" x2="780" y2="390" stroke="#d4a02040" stroke-width="1"/>
+
+  <text x="455" y="415" font-size="13" fill="#cccccc">Pixel 0 (BG)</text>
+  <text x="595" y="415" font-size="13" fill="#cccccc">→ ATC[0]=0</text>
+  <text x="705" y="415" font-size="13" fill="#40a0ff">→ DAC 0</text>
+  <rect x="765" y="403" width="18" height="16" rx="2" fill="url(#c0Grad)" stroke="#666" stroke-width="1"/>
+
+  <text x="455" y="438" font-size="13" fill="#cccccc">Pixel 1</text>
+  <text x="595" y="438" font-size="13" fill="#cccccc">→ ATC[1]=10</text>
+  <text x="705" y="438" font-size="13" fill="#40a0ff">→ DAC 10</text>
+  <rect x="765" y="426" width="18" height="16" rx="2" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1"/>
+
+  <text x="455" y="461" font-size="13" fill="#cccccc">Pixel 2</text>
+  <text x="595" y="461" font-size="13" fill="#cccccc">→ ATC[2]=12</text>
+  <text x="705" y="461" font-size="13" fill="#ff5050">→ DAC 12</text>
+  <rect x="765" y="449" width="18" height="16" rx="2" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1"/>
+
+  <text x="455" y="484" font-size="13" fill="#cccccc">Pixel 3</text>
+  <text x="595" y="484" font-size="13" fill="#cccccc">→ ATC[3]=14</text>
+  <text x="705" y="484" font-size="13" fill="#ffcc66">→ DAC 14</text>
+  <rect x="765" y="472" width="18" height="16" rx="2" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1"/>
+
+  <!-- Palette 1 Low -->
+  <rect x="45" y="515" width="370" height="160" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="230" y="540" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 1 LOW</text>
+  <text x="230" y="557" text-anchor="middle" font-size="12" fill="#aaaaaa" font-style="italic">Dark Cyan / Dark Magenta / Dark White</text>
+  <line x1="65" y1="565" x2="395" y2="565" stroke="#d4a02040" stroke-width="1"/>
+
+  <text x="70" y="590" font-size="13" fill="#cccccc">Pixel 0 (BG)</text>
+  <text x="210" y="590" font-size="13" fill="#cccccc">→ ATC[0]=0</text>
+  <text x="320" y="590" font-size="13" fill="#40a0ff">→ DAC 0</text>
+  <rect x="380" y="578" width="18" height="16" rx="2" fill="url(#c0Grad)" stroke="#666" stroke-width="1"/>
+
+  <text x="70" y="613" font-size="13" fill="#cccccc">Pixel 1</text>
+  <text x="210" y="613" font-size="13" fill="#cccccc">→ ATC[1]=3</text>
+  <text x="320" y="613" font-size="13" fill="#40a0ff">→ DAC 3</text>
+  <rect x="380" y="601" width="18" height="16" rx="2" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1"/>
+
+  <text x="70" y="636" font-size="13" fill="#cccccc">Pixel 2</text>
+  <text x="210" y="636" font-size="13" fill="#cccccc">→ ATC[2]=5</text>
+  <text x="320" y="636" font-size="13" fill="#ff5050">→ DAC 5</text>
+  <rect x="380" y="624" width="18" height="16" rx="2" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1"/>
+
+  <text x="70" y="659" font-size="13" fill="#cccccc">Pixel 3</text>
+  <text x="210" y="659" font-size="13" fill="#cccccc">→ ATC[3]=7</text>
+  <text x="320" y="659" font-size="13" fill="#ffcc66">→ DAC 7</text>
+  <rect x="380" y="647" width="18" height="16" rx="2" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1"/>
+
+  <!-- Palette 0 Low -->
+  <rect x="430" y="515" width="370" height="160" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="615" y="540" text-anchor="middle" font-size="15" fill="url(#titleGold)" font-weight="bold" letter-spacing="1">PALETTE 0 LOW</text>
+  <text x="615" y="557" text-anchor="middle" font-size="12" fill="#aaaaaa" font-style="italic">Dark Green / Dark Red / Brown</text>
+  <line x1="450" y1="565" x2="780" y2="565" stroke="#d4a02040" stroke-width="1"/>
+
+  <text x="455" y="590" font-size="13" fill="#cccccc">Pixel 0 (BG)</text>
+  <text x="595" y="590" font-size="13" fill="#cccccc">→ ATC[0]=0</text>
+  <text x="705" y="590" font-size="13" fill="#40a0ff">→ DAC 0</text>
+  <rect x="765" y="578" width="18" height="16" rx="2" fill="url(#c0Grad)" stroke="#666" stroke-width="1"/>
+
+  <text x="455" y="613" font-size="13" fill="#cccccc">Pixel 1</text>
+  <text x="595" y="613" font-size="13" fill="#cccccc">→ ATC[1]=2</text>
+  <text x="705" y="613" font-size="13" fill="#40a0ff">→ DAC 2</text>
+  <rect x="765" y="601" width="18" height="16" rx="2" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1"/>
+
+  <text x="455" y="636" font-size="13" fill="#cccccc">Pixel 2</text>
+  <text x="595" y="636" font-size="13" fill="#cccccc">→ ATC[2]=4</text>
+  <text x="705" y="636" font-size="13" fill="#ff5050">→ DAC 4</text>
+  <rect x="765" y="624" width="18" height="16" rx="2" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1"/>
+
+  <text x="455" y="659" font-size="13" fill="#cccccc">Pixel 3</text>
+  <text x="595" y="659" font-size="13" fill="#cccccc">→ ATC[3]=6</text>
+  <text x="705" y="659" font-size="13" fill="#ffcc66">→ DAC 6</text>
+  <rect x="765" y="647" width="18" height="16" rx="2" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1"/>
+
+  <!-- ==================== OUR ATC ROUTING PANEL ==================== -->
+  <rect x="815" y="340" width="370" height="160" rx="6" fill="#0d1f35" stroke="#ffe880" stroke-width="2" opacity="0.95"/>
+  <text x="1000" y="365" text-anchor="middle" font-size="15" fill="#ffe880" font-weight="bold" letter-spacing="1">OUR ATC ROUTING</text>
+  <text x="1000" y="382" text-anchor="middle" font-size="12" fill="#ffe880" font-style="italic">ATC[0]=0, ATC[1]=1, ATC[2]=8, ATC[3]=9</text>
+  <line x1="835" y1="390" x2="1165" y2="390" stroke="#ffe88040" stroke-width="1"/>
+
+  <text x="840" y="415" font-size="13" fill="#cccccc">Pixel 0 (BG)</text>
+  <text x="980" y="415" font-size="13" fill="#cccccc">→ ATC[0]=0</text>
+  <text x="1090" y="415" font-size="13" fill="#40a0ff">→ DAC 0</text>
+  <rect x="1150" y="403" width="18" height="16" rx="2" fill="url(#c0Grad)" stroke="#666" stroke-width="1"/>
+
+  <text x="840" y="438" font-size="13" fill="#cccccc">Pixel 1</text>
+  <text x="980" y="438" font-size="13" fill="#cccccc">→ ATC[1]=1</text>
+  <text x="1090" y="438" font-size="13" fill="#40a0ff">→ DAC 1</text>
+  <rect x="1150" y="426" width="18" height="16" rx="2" fill="url(#c1Grad)" stroke="#2060c0" stroke-width="1"/>
+
+  <text x="840" y="461" font-size="13" fill="#cccccc">Pixel 2</text>
+  <text x="980" y="461" font-size="13" fill="#cccccc">→ ATC[2]=8</text>
+  <text x="1090" y="461" font-size="13" fill="#ff5050">→ DAC 8</text>
+  <rect x="1150" y="449" width="18" height="16" rx="2" fill="url(#c2Grad)" stroke="#c02020" stroke-width="1"/>
+
+  <text x="840" y="484" font-size="13" fill="#cccccc">Pixel 3</text>
+  <text x="980" y="484" font-size="13" fill="#cccccc">→ ATC[3]=9</text>
+  <text x="1090" y="484" font-size="13" fill="#ffcc66">→ DAC 9</text>
+  <rect x="1150" y="472" width="18" height="16" rx="2" fill="url(#c3Grad)" stroke="#cc8830" stroke-width="1"/>
+
+  <!-- ==================== KEY INSIGHT PANEL ==================== -->
+  <rect x="815" y="515" width="740" height="160" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="1185" y="543" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">THE TRICK</text>
+  <line x1="835" y1="552" x2="1535" y2="552" stroke="#d4a02040" stroke-width="1"/>
+
+  <text x="850" y="578" font-size="14" fill="#cccccc">CGA games select one of four palette variants via INT 10h AH=0Bh.</text>
+  <text x="850" y="600" font-size="14" fill="#cccccc">Each variant routes pixels to a different set of DAC entries.</text>
+  <text x="850" y="628" font-size="14" fill="#50ff80" font-weight="bold">PalSwap fills ALL 16 DAC entries before the game starts.</text>
+  <text x="850" y="650" font-size="14" fill="#50ff80">No matter which palette the game picks, our colors are already there.</text>
+
+  <!-- ==================== FOOTER ==================== -->
+  <rect x="45" y="695" width="1510" height="175" rx="6" fill="#0d1f35" stroke="url(#goldGrad)" stroke-width="2" opacity="0.95"/>
+  <text x="800" y="722" text-anchor="middle" font-size="16" fill="url(#titleGold)" font-weight="bold" letter-spacing="2">HOW IT PERSISTS</text>
+  <line x1="65" y1="730" x2="1535" y2="730" stroke="#d4a02040" stroke-width="1"/>
+
+  <!-- VGA flow -->
+  <rect x="80" y="745" width="130" height="40" rx="5" fill="#4CAF50" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="145" y="770" text-anchor="middle" font-size="13" fill="white" font-weight="bold">PalSwap runs</text>
+
+  <line x1="215" y1="765" x2="275" y2="765" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="280" y="745" width="180" height="40" rx="5" fill="#1565C0" stroke="#0D47A1" stroke-width="1.5"/>
+  <text x="370" y="770" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Writes DAC 0-15</text>
+
+  <line x1="465" y1="765" x2="525" y2="765" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="530" y="745" width="220" height="40" rx="5" fill="#1565C0" stroke="#0D47A1" stroke-width="1.5"/>
+  <text x="640" y="770" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Programs ATC[0-3]</text>
+
+  <line x1="755" y1="765" x2="815" y2="765" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="820" y="745" width="280" height="40" rx="5" fill="#E65100" stroke="#BF360C" stroke-width="1.5"/>
+  <text x="960" y="764" text-anchor="middle" font-size="12" fill="white" font-weight="bold">INT 10h AX=1201h BL=31h</text>
+  <text x="960" y="780" text-anchor="middle" font-size="10" fill="#ffcc80">Disables BIOS palette reload</text>
+
+  <line x1="1105" y1="765" x2="1165" y2="765" stroke="#d4a020" stroke-width="2" marker-end="url(#arrowGold)"/>
+
+  <rect x="1170" y="745" width="150" height="40" rx="5" fill="#4CAF50" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="1245" y="770" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Game starts</text>
+
+  <!-- Explanatory text -->
+  <text x="80" y="815" font-size="13" fill="#cccccc">When the game calls INT 10h AH=00 to set CGA mode 4, the BIOS normally reloads the default palette.</text>
+  <text x="80" y="835" font-size="13" fill="#50ff80">With 1201h/31h active, the BIOS skips this — our DAC values survive the mode switch.</text>
+  <text x="80" y="855" font-size="13" fill="#cccccc">The game then calls AH=0Bh to select its palette, which routes ATC to our pre-loaded DAC entries.</text>
+</svg>

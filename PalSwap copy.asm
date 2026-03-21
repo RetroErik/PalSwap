@@ -122,6 +122,8 @@ main:
     je .preset_4
     cmp al, 7
     je .preset_5
+    cmp al, 8
+    je .preset_6
 
     jmp .load_palette
 
@@ -138,11 +140,28 @@ main:
 .do_reset:
     mov dx, msg_resetting
     call print_string
-    call load_fallback_palette
-    call write_palette
+    ; Re-enable default palette loading on mode set (undo our disable)
+    cmp byte [video_type], 2
+    jne .skip_reenable
+    mov ax, 0x1200              ; AL=00 = enable
+    mov bl, 0x31
+    int 0x10
+.skip_reenable:
+    ; Force a mode re-set so the BIOS reloads the default DAC palette.
+    ; Get current video mode, then set it again.
+    mov ah, 0x0F                ; Get current video mode
+    int 0x10                    ; AL = mode number
+    xor ah, ah                  ; AH=0 = set video mode
+    int 0x10                    ; Triggers full palette reload
     mov dx, msg_reset_done
     call print_string
     jmp .exit
+
+.preset_6:
+    mov dx, msg_preset6
+    call print_string
+    mov si, preset_red_blue
+    jmp .apply_preset
 
 .preset_1:
     mov dx, msg_preset1
@@ -290,184 +309,172 @@ write_palette:
     jmp write_palette_ega
 
 ; ============================================================================
-; write_palette_vga - Write 4 user colors to VGA DAC
-; Programs ALL 16 CGA-mapped entries (both palettes, both intensities)
-; so it works regardless of what palette/intensity the game selects.
-; Input:  config_buffer (4 × RGB, 0-63 each)
+; write_palette_vga - Write 4 user colors to VGA DAC + program ATC
 ;
-; VGA DAC port protocol:
-;   1. Write DAC entry index to port 3C8h
-;   2. Write R byte (0-63) to port 3C9h
-;   3. Write G byte (0-63) to port 3C9h
-;   4. Write B byte (0-63) to port 3C9h
-;   The index auto-increments after each RGB triple — no need to re-index
-;   for consecutive entries.
+; In CGA mode 4 (320x200 4-color), the 2-bit pixel value (0-3) directly
+; selects ATC register [0], [1], [2], or [3].  The ATC register value
+; is used as the DAC index.  That's the ONLY hardware path.
+;
+; When a game calls INT 10h AH=0Bh to select a CGA palette, the BIOS
+; reprograms ATC[1-3] to point to the standard CGA DAC entries:
+;   Pal 1 high: ATC[1]=11, ATC[2]=13, ATC[3]=15
+;   Pal 1 low:  ATC[1]=3,  ATC[2]=5,  ATC[3]=7
+;   Pal 0 high: ATC[1]=10, ATC[2]=12, ATC[3]=14
+;   Pal 0 low:  ATC[1]=2,  ATC[2]=4,  ATC[3]=6
+;
+; Games that DON'T call AH=0Bh keep whatever ATC was set before mode
+; change (preserved by our 1201h/31h disable-palette-reload flag).
+;
+; PROBLEM: DAC entries 2 and 3 are needed by BOTH:
+;   - Identity/text-mode ATC games (pixel 2→DAC 2=color 2, pixel 3→DAC 3=color 3)
+;   - CGA palette 0/1 low (pixel 1→DAC 2 or 3 = color 1)
+;   We can't put two different colors in the same DAC entry.
+;
+; SOLUTION: Use DAC entries 8 and 9 for our ATC pixel 2 and pixel 3.
+;   These entries are NEVER used by any standard CGA palette routing.
+;   Set ATC[0]=0, ATC[1]=1, ATC[2]=8, ATC[3]=9.
+;   Then fill ALL 16 DAC entries for every CGA palette variant:
+;
+;   DAC 0  = color 0 (background, all modes)
+;   DAC 1  = color 1 (our ATC pixel 1, never used by CGA palettes)
+;   DAC 2  = color 1 (CGA pal 0 low, pixel 1)
+;   DAC 3  = color 1 (CGA pal 1 low, pixel 1 — e.g. Zaxxon)
+;   DAC 4  = color 2 (CGA pal 0 low, pixel 2)
+;   DAC 5  = color 2 (CGA pal 1 low, pixel 2)
+;   DAC 6  = color 3 (CGA pal 0 low, pixel 3)
+;   DAC 7  = color 3 (CGA pal 1 low, pixel 3)
+;   DAC 8  = color 2 (our ATC pixel 2, never used by CGA palettes)
+;   DAC 9  = color 3 (our ATC pixel 3, never used by CGA palettes)
+;   DAC 10 = color 1 (CGA pal 0 high, pixel 1)
+;   DAC 11 = color 1 (CGA pal 1 high, pixel 1)
+;   DAC 12 = color 2 (CGA pal 0 high, pixel 2)
+;   DAC 13 = color 2 (CGA pal 1 high, pixel 2)
+;   DAC 14 = color 3 (CGA pal 0 high, pixel 3)
+;   DAC 15 = color 3 (CGA pal 1 high, pixel 3)
+;
+;   ZERO conflicts.  Every scenario gets the right color:
+;   - Our ATC stays (game doesn't call AH=0Bh): pixel 1→1→c1, 2→8→c2, 3→9→c3
+;   - Game sets pal 1 high: pixel 1→11→c1, 2→13→c2, 3→15→c3
+;   - Game sets pal 1 low:  pixel 1→3→c1,  2→5→c2,  3→7→c3
+;   - Game sets pal 0 high: pixel 1→10→c1, 2→12→c2, 3→14→c3
+;   - Game sets pal 0 low:  pixel 1→2→c1,  2→4→c2,  3→6→c3
+;
+; Input:  config_buffer (4 × RGB, 0-63 each)
 ; ============================================================================
 write_palette_vga:
     push ax
+    push bx
+    push cx
     push dx
+    push si
+    push di
 
-    ; Write all 13 CGA-relevant DAC entries explicitly.
-    ; Entries are not contiguous so we index each one individually.
-    ; Entry 0 = background (user color 0).
-    ; Entries 2-7, 10-15 = foreground colors 1-3, repeated across all
-    ; CGA palette and intensity combinations.
-    ;
-    ; VGA DAC write protocol:
-    ;   OUT 3C8h, entry_index   ; select entry
-    ;   OUT 3C9h, R             ; write red   (0-63)
-    ;   OUT 3C9h, G             ; write green (0-63)
-    ;   OUT 3C9h, B             ; write blue  (0-63)
+    ; Disable default palette loading on mode set (preserves ATC + DAC)
+    mov ax, 0x1201
+    mov bl, 0x31
+    int 0x10
 
-    ; --- Entry 0: background (color 0) ---
+    ; --- Step 1: Build 16-entry DAC table and write to hardware ---
+    ; Use color_to_dac lookup: maps each DAC index to user color 0-3
+    mov si, color_to_dac
+    mov di, dac_table
+    mov cx, 16
+    cld
+.build_dac:
+    lodsb                       ; AL = user color index (0-3)
+    ; Multiply by 3 for config_buffer offset
+    mov bl, al
+    shl bl, 1
+    add bl, al                  ; BL = color_index * 3
+    xor bh, bh
+    mov al, [config_buffer + bx]
+    stosb
+    mov al, [config_buffer + bx + 1]
+    stosb
+    mov al, [config_buffer + bx + 2]
+    stosb
+    loop .build_dac
+
+    ; Write all 16 DAC entries starting at index 0 (auto-increment)
     mov dx, VGA_DAC_WRITE_IDX
-    mov al, 0
+    xor al, al
+    out dx, al
+    mov si, dac_table
+    mov cx, 48                  ; 16 entries × 3 bytes
+    mov dx, VGA_DAC_DATA
+.write_dac:
+    lodsb
+    out dx, al
+    loop .write_dac
+
+    ; --- Step 2: Program ATC[0-3] for conflict-free routing ---
+    ; ATC[0]=0, ATC[1]=1, ATC[2]=8, ATC[3]=9
+    ; ATC[4-15] = standard text mode values (unaffected by CGA mode 4)
+    cli
+    mov dx, INPUT_STATUS_1
+    in al, dx                   ; Reset ATC flip-flop to ADDR state
+
+    xor bx, bx
+.write_atc:
+    mov dx, ATC_ADDR_DATA
+    mov al, bl                  ; Index (bit 5=0: palette locked)
+    out dx, al
+    jmp short $+2               ; I/O delay
+    mov al, [vga_atc_init + bx]
+    out dx, al
+    jmp short $+2
+    inc bx
+    cmp bx, 16
+    jb .write_atc
+
+    ; Re-enable screen: write 0x20 (bit 5 = palette enable)
+    mov al, 0x20
+    out dx, al
+    sti
+
+    ; --- Step 3: Write colors to DAC entries used by text mode display ---
+    ; In text mode, attributes 11/13/15 go through ATC[11]=0x3B, ATC[13]=0x3D,
+    ; ATC[15]=0x3F, routing to DAC 59, 61, 63 (standard VGA text palette).
+    ; Write our custom colors there so the color preview in DOS shows correctly.
+    ; DAC entries 59/61/63 are far above the CGA range (0-15) — no conflict.
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 59                  ; DAC 59 = text attr 11 (light cyan slot)
     out dx, al
     mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+0]   ; R
+    mov al, [config_buffer+3]   ; color 1 R
     out dx, al
-    mov al, [config_buffer+1]   ; G
+    mov al, [config_buffer+4]   ; color 1 G
     out dx, al
-    mov al, [config_buffer+2]   ; B
-    out dx, al
-
-    ; --- Palette 0 low intensity: entries 2(c1), 4(c2), 6(c3) ---
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 2
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+3]
-    out dx, al
-    mov al, [config_buffer+4]
-    out dx, al
-    mov al, [config_buffer+5]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 4
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+6]
-    out dx, al
-    mov al, [config_buffer+7]
-    out dx, al
-    mov al, [config_buffer+8]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 6
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+9]
-    out dx, al
-    mov al, [config_buffer+10]
-    out dx, al
-    mov al, [config_buffer+11]
-    out dx, al
-
-    ; --- Palette 1 low intensity: entries 3(c1), 5(c2), 7(c3) ---
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 3
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+3]
-    out dx, al
-    mov al, [config_buffer+4]
-    out dx, al
-    mov al, [config_buffer+5]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 5
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+6]
-    out dx, al
-    mov al, [config_buffer+7]
-    out dx, al
-    mov al, [config_buffer+8]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 7
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+9]
-    out dx, al
-    mov al, [config_buffer+10]
-    out dx, al
-    mov al, [config_buffer+11]
-    out dx, al
-
-    ; --- Palette 0 high intensity: entries 10(c1), 12(c2), 14(c3) ---
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 10
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+3]
-    out dx, al
-    mov al, [config_buffer+4]
-    out dx, al
-    mov al, [config_buffer+5]
+    mov al, [config_buffer+5]   ; color 1 B
     out dx, al
 
     mov dx, VGA_DAC_WRITE_IDX
-    mov al, 12
+    mov al, 61                  ; DAC 61 = text attr 13 (light magenta slot)
     out dx, al
     mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+6]
+    mov al, [config_buffer+6]   ; color 2 R
     out dx, al
-    mov al, [config_buffer+7]
+    mov al, [config_buffer+7]   ; color 2 G
     out dx, al
-    mov al, [config_buffer+8]
+    mov al, [config_buffer+8]   ; color 2 B
     out dx, al
 
     mov dx, VGA_DAC_WRITE_IDX
-    mov al, 14
+    mov al, 63                  ; DAC 63 = text attr 15 (white slot)
     out dx, al
     mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+9]
+    mov al, [config_buffer+9]   ; color 3 R
     out dx, al
-    mov al, [config_buffer+10]
+    mov al, [config_buffer+10]  ; color 3 G
     out dx, al
-    mov al, [config_buffer+11]
-    out dx, al
-
-    ; --- Palette 1 high intensity: entries 11(c1), 13(c2), 15(c3) ---
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 11
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+3]
-    out dx, al
-    mov al, [config_buffer+4]
-    out dx, al
-    mov al, [config_buffer+5]
+    mov al, [config_buffer+11]  ; color 3 B
     out dx, al
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 13
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+6]
-    out dx, al
-    mov al, [config_buffer+7]
-    out dx, al
-    mov al, [config_buffer+8]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 15
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [config_buffer+9]
-    out dx, al
-    mov al, [config_buffer+10]
-    out dx, al
-    mov al, [config_buffer+11]
-    out dx, al
-
+    pop di
+    pop si
     pop dx
+    pop cx
+    pop bx
     pop ax
     ret
 
@@ -993,6 +1000,8 @@ check_switches:
     je .is_preset4
     cmp al, '5'
     je .is_preset5
+    cmp al, '6'
+    je .is_preset6
     jmp .no_switch
 
 .is_help:     mov al, 1 ; jmp .sw_done
@@ -1008,6 +1017,8 @@ check_switches:
 .is_preset4:  mov al, 6
     jmp .sw_done
 .is_preset5:  mov al, 7
+    jmp .sw_done
+.is_preset6:  mov al, 8
     jmp .sw_done
 .no_switch:   xor al, al
 
@@ -1217,7 +1228,7 @@ msg_help:
     db 'Usage: EVGAPAL [file.txt] [/1..5] [/R] [/?]', 13, 10
     db 13, 10
     db '  file.txt  Load palette from text file (default: EVGAPAL.TXT)', 13, 10
-    db '  /R        Reset to standard CGA palette', 13, 10
+    db '  /R        Reset to standard CGA palette (re-enables BIOS reload)', 13, 10
     db '  /?        Show this help', 13, 10
     db 13, 10
     db 'Built-in presets (RGB values 0-63, same as PC1PAL):', 13, 10
@@ -1226,6 +1237,7 @@ msg_help:
     db '  /3  C64-inspired   - Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36)', 13, 10
     db '  /4  CGA Red/Green  - Black, Red(63,9,9), Green(9,63,9), White(63,63,63)', 13, 10
     db '  /5  CGA Red/Blue   - Black, Red(63,0,0), Blue(0,0,63), White(63,63,63)', 13, 10
+    db '  /6  Red/Blue Only  - Black, Black(0,0,0), Red(63,0,0), Blue(0,0,63)', 13, 10
     db 13, 10
     db 'VGA: Full 6-bit RGB (0-63). Values written directly to DAC.', 13, 10
     db 'EGA: Values snapped to nearest of 8 binary EGA intensities per channel.', 13, 10
@@ -1240,8 +1252,9 @@ msg_preset2:    db 'Loading preset: Sierra Natural', 13, 10, '$'
 msg_preset3:    db 'Loading preset: C64-inspired', 13, 10, '$'
 msg_preset4:    db 'Loading preset: CGA Red/Green/White', 13, 10, '$'
 msg_preset5:    db 'Loading preset: CGA Red/Blue/White', 13, 10, '$'
+msg_preset6:    db 'Loading preset: Red/Blue Only', 13, 10, '$'
 msg_resetting:  db 'Resetting to standard CGA palette...', 13, 10, '$'
-msg_reset_done: db 'CGA palette restored.', 13, 10, '$'
+msg_reset_done: db 'CGA palette restored. Default palette loading re-enabled.', 13, 10, '$'
 msg_colors:     db 'Colors (R,G,B):', 13, 10, '$'
 msg_color_prefix: db '  Color $'
 msg_color_sep:  db ': $'
@@ -1299,6 +1312,12 @@ preset_cga_palette:
     db 0,  0, 63    ; Blue
     db 63, 63, 63   ; White
 
+preset_red_blue:
+    db 0,  0,  0    ; Black
+    db 0,  0,  0    ; Black
+    db 63,  0,  0   ; Red
+    db 0,  0, 63    ; Blue
+
 ; ============================================================================
 ; Default EGA ATC register values for the 16 CGA colors
 ; These produce the standard CGA look on EGA (palette 1 high-intensity):
@@ -1326,6 +1345,24 @@ cga_ega_default:
     db 0x3F   ; 15: White        (all six bits)
 
 ; ============================================================================
+; VGA conflict-free DAC/ATC mapping tables
+; ============================================================================
+
+; Maps each DAC entry (0-15) to a user color index (0-3).
+; Covers all CGA palette variants + our own ATC routing at entries 1, 8, 9.
+;   0=bg, 1=our c1, 2=pal0low c1, 3=pal1low c1, 4=pal0low c2, 5=pal1low c2,
+;   6=pal0low c3, 7=pal1low c3, 8=our c2, 9=our c3, 10=pal0hi c1, 11=pal1hi c1,
+;   12=pal0hi c2, 13=pal1hi c2, 14=pal0hi c3, 15=pal1hi c3
+color_to_dac:
+    db 0, 1, 1, 1, 2, 2, 3, 3, 2, 3, 1, 1, 2, 2, 3, 3
+
+; ATC register init values for VGA CGA-override mode.
+; ATC[0-3] = 0, 1, 8, 9 — routes pixel values to conflict-free DAC entries.
+; ATC[4-15] = standard text mode values (only ATC[0-3] matter in CGA mode 4).
+vga_atc_init:
+    db 0, 1, 8, 9, 4, 5, 0x14, 7, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
+
+; ============================================================================
 ; Variables
 ; ============================================================================
 video_type:     db 0            ; 0=none, 1=EGA, 2=VGA
@@ -1336,6 +1373,7 @@ filename_buffer: times 128 db 0
 config_buffer:   times CONFIG_SIZE db 0
 ega_colors:      times 4 db 0   ; EGA 6-bit palette values for 4 user colors
 atc_table:       times 16 db 0  ; Full 16-register ATC table
+dac_table:       times 48 db 0  ; 16 DAC entries × 3 bytes (RGB)
 text_buffer:     times TEXT_BUF_SIZE db 0
 
 ; ============================================================================

@@ -1,8 +1,9 @@
 ; ============================================================================
-; VEGAPal.ASM - CGA Palette Override TSR for EGA and VGA cards
+; PalSwapT.ASM - CGA Palette Override TSR for EGA and VGA cards
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 2.1 - TSR edition
+; Version 2.0 - TSR edition
+; NOTE: Only tested in DOSBox, not on real hardware.
 ; ============================================================================
 ;
 ; PROBLEM SOLVED: CGA games reset the video mode (INT 10h AH=00h) at startup,
@@ -11,14 +12,14 @@
 ; so the game always sees your colors.
 ;
 ; HOW IT WORKS:
-;   1. You run VEGAPal [/1..5 | file.txt] before the game.
-;   2. VEGAPal loads the palette, hooks INT 10h, and stays resident (TSR).
+;   1. You run PalSwapT [/1..5 | file.txt] before the game.
+;   2. PalSwapT loads the palette, hooks INT 10h, and stays resident (TSR).
 ;   3. When the game calls INT 10h AH=00h AL=04h (set CGA mode 4):
 ;        a. The original INT 10h handler runs first (sets the hardware mode).
 ;        b. Our hook then immediately programs the VGA DAC or EGA ATC
 ;           with your saved RGB values.
 ;   4. The game sees its expected CGA mode but with your custom colors.
-;   5. Run "VEGAPal /U" to uninstall the TSR when done.
+;   5. Run "PalSwapT /U" to uninstall the TSR when done.
 ;
 ; VGA DAC (ports 3C8h/3C9h):
 ;   6-bit RGB per channel (0-63), written directly to hardware registers.
@@ -46,12 +47,12 @@
 ;   ORG 0x100 means the label offsets already include the 256-byte PSP,
 ;   so no extra PSP addition is needed.
 ;
-; Usage:  VEGAPal [file.txt] [/1] [/2] [/3] [/4] [/5] [/R] [/U] [/?]
+; Usage:  PalSwapT [file.txt] [/1] [/2] [/3] [/4] [/5] [/R] [/U] [/?]
 ;   /1 .. /5   Built-in colour presets (see list below)
 ;   /R         Reset: TSR installs but uses the default CGA palette
 ;   /U         Uninstall the resident TSR from memory
 ;   /?         Show help
-;   file.txt   Load colours from a text file (default: VEGAPal.TXT)
+;   file.txt   Load colours from a text file (default: PALSWAPT.TXT)
 ;
 ; Palette text file format (identical to PC1PAL.TXT - 100% cross-compatible):
 ;   R,G,B   one line per colour, 4 lines total, values 0-63
@@ -87,7 +88,7 @@ jmp main
 ; ============================================================================
 ; RESIDENT DATA
 ; ============================================================================
-tsr_sig:        db 'VEGAPal'
+tsr_sig:        db 'PalSwap'
 
 orig_int10_ofs: dw 0            ; far-pointer layout: offset first...
 orig_int10_seg: dw 0            ; ...segment second  (required for jmp/call far [mem])
@@ -1181,7 +1182,7 @@ print_string:
 ; Data
 ; ============================================================================
 msg_banner:
-    db 'VEGAPal v2.1 - CGA Palette TSR for EGA/VGA', 13, 10
+    db 'PalSwapT v2.1 - CGA Palette TSR for EGA/VGA', 13, 10
     db 'By Retro Erik - 2026 - Hooks INT 10h to survive game mode resets', 13, 10
     db 'Compatible with PC1PAL palette text files.', 13, 10, '$'
 
@@ -1194,18 +1195,18 @@ msg_no_adapter:
 
 msg_installed:
     db 'TSR installed. INT 10h hooked.', 13, 10
-    db 'Run your CGA game now. Use VEGAPal /U to uninstall.', 13, 10, '$'
+    db 'Run your CGA game now. Use PalSwapT /U to uninstall.', 13, 10, '$'
 msg_already_loaded:
-    db 'VEGAPal TSR already installed.', 13, 10
-    db 'Use VEGAPal /U to uninstall first, then reinstall with new palette.', 13, 10, '$'
+    db 'PalSwapT TSR already installed.', 13, 10
+    db 'Use PalSwapT /U to uninstall first, then reinstall with new palette.', 13, 10, '$'
 msg_unloaded:
-    db 'VEGAPal TSR uninstalled. INT 10h restored.', 13, 10, '$'
+    db 'PalSwapT TSR uninstalled. INT 10h restored.', 13, 10, '$'
 msg_unload_error:
-    db 'Error: VEGAPal TSR not found in INT 10h chain.', 13, 10, '$'
+    db 'Error: PalSwapT TSR not found in INT 10h chain.', 13, 10, '$'
 
 msg_help:
     db 13, 10
-    db 'Usage: VEGAPal [file.txt] [/1..5] [/R] [/U] [/?]', 13, 10, 13, 10
+    db 'Usage: PalSwapT [file.txt] [/1..5] [/R] [/U] [/?]', 13, 10, 13, 10
     db '  Installs as TSR. Hooks INT 10h and re-applies palette after', 13, 10
     db '  every CGA mode 4/5 set. Palette survives game mode resets.', 13, 10, 13, 10
     db '  /R  Default palette   /U  Uninstall TSR   /?  Help', 13, 10
@@ -1215,7 +1216,7 @@ msg_help:
     db '  /4  CGA Red/Green   Black, Red, Green, White', 13, 10
     db '  /5  CGA Red/Blue    Black, Red, Blue, White', 13, 10, 13, 10
     db '  Text file: R,G,B per line (0-63), compatible with PC1PAL.TXT', 13, 10
-    db '  Default file: VEGAPal.TXT', 13, 10
+    db '  Default file: PALSWAPT.TXT', 13, 10
     db '$'
 
 msg_preset1:     db 'Preset: Arcade Vibrant', 13, 10, '$'
@@ -1233,7 +1234,7 @@ msg_file_error:  db 'Warning: Cannot open palette file.', 13, 10, '$'
 msg_parse_error: db 'Warning: Cannot parse palette file.', 13, 10, '$'
 msg_invalid:     db 'Warning: Value out of range (must be 0-63).', 13, 10, '$'
 
-default_filename: db 'VEGAPal.TXT', 0
+default_filename: db 'PALSWAPT.TXT', 0
 
 cga_ega_default:
     db 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07
@@ -1263,5 +1264,5 @@ filename_buffer: times 128 db 0
 text_buffer:     times TEXT_BUF_SIZE db 0
 
 ; ============================================================================
-; End of VEGAPal.ASM
+; End of PalSwapT.ASM
 ; ============================================================================
