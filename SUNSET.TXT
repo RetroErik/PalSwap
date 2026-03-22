@@ -1,0 +1,15 @@
+; SUNSET.TXT - Warm sunset palette
+; For use with PC1PAL on Olivetti Prodest PC1
+; Values are 0-63 (6-bit RGB)
+
+# Color 0: Black (background)
+0 0 0
+
+# Color 1: Dark Red / Maroon
+42 0 21
+
+# Color 2: Orange
+63 21 0
+
+# Color 3: Yellow
+63 63 0

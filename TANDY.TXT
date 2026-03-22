@@ -1,0 +1,8 @@
+; TANDY.TXT - Tandy-style enhanced CGA palette
+; For use with PC1PAL on Olivetti Prodest PC1
+; Values are 0-63 (6-bit RGB)
+
+0,0,0       ; Color 0: Black (background)
+0,42,63     ; Color 1: Sky Blue
+63,21,0     ; Color 2: Orange  
+63,63,63    ; Color 3: White
