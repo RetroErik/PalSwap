@@ -1,67 +1,74 @@
 ; ============================================================================
-; PalSwapT.ASM - CGA Palette Override TSR for EGA and VGA cards
+; PalSwapT.ASM - CGA Palette Override TSR with Live Hotkeys
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 2.0 - TSR edition
-; NOTE: Only tested in DOSBox, not on real hardware.
+; Version 3.0 - TSR with ScrollLock hotkeys
 ; ============================================================================
 ;
-; PROBLEM SOLVED: CGA games reset the video mode (INT 10h AH=00h) at startup,
-; which wipes any palette you set beforehand.  This TSR hooks INT 10h and
-; re-applies your custom palette IMMEDIATELY after every CGA mode 4/5 set,
-; so the game always sees your colors.
+; Combines the full palette engine of PalSwap.asm with a TSR that hooks
+; both INT 10h (video mode change) and INT 09h (keyboard) so you can:
+;   - Survive CGA mode resets (palette re-applied after every mode 4/5 set)
+;   - Switch presets LIVE while a game is running (ScrollLock + 1..5)
+;   - Adjust brightness, saturation, pop on the fly (ScrollLock + arrows/P/R)
+;
+; HOTKEY SYSTEM:
+;   Turn ScrollLock ON to activate palette edit mode (LED = indicator).
+;   While ScrollLock is ON:
+;     1..5         Load preset 1-5 (Arcade, Sierra, C64, Red/Green, Red/Blue)
+;     P            Toggle Pop (saturation + contrast boost)
+;     R            Reset to default CGA palette
+;     Up / Down    Brighten / Dim (+/-8 per step, max 3 steps)
+;     Left / Right Less vivid / More vivid (saturation, max 3 steps)
+;   Turn ScrollLock OFF to return to normal — all keys pass through.
+;   (ScrollLock is never used by CGA-era games, so zero interference.)
 ;
 ; HOW IT WORKS:
-;   1. You run PalSwapT [/1..5 | file.txt] before the game.
-;   2. PalSwapT loads the palette, hooks INT 10h, and stays resident (TSR).
-;   3. When the game calls INT 10h AH=00h AL=04h (set CGA mode 4):
+;   1. You run PalSwapT [/1..5 | file.txt | /c:... | /b:...] before the game.
+;   2. PalSwapT loads the palette, hooks INT 09h + INT 10h, stays resident.
+;   3. When the game calls INT 10h AH=00h AL=04h/05h (set CGA mode 4/5):
 ;        a. The original INT 10h handler runs first (sets the hardware mode).
-;        b. Our hook then immediately programs the VGA DAC or EGA ATC
-;           with your saved RGB values.
-;   4. The game sees its expected CGA mode but with your custom colors.
-;   5. Run "PalSwapT /U" to uninstall the TSR when done.
+;        b. Our hook immediately re-programs the VGA DAC or EGA ATC.
+;   4. While running, press ScrollLock then 1-5/P/R/arrows to adjust live.
+;   5. Run "PalSwapT /U" to uninstall.
 ;
-; VGA DAC (ports 3C8h/3C9h):
-;   6-bit RGB per channel (0-63), written directly to hardware registers.
-;   All 13 CGA DAC entries that CGA mode 4 uses are programmed.
+; VGA path:
+;   Table-driven DAC write using color_to_dac[] for conflict-free routing.
+;   ATC[0-3] = 0, 1, 8, 9  — avoids DAC entry conflicts between CGA palette
+;   variants.  Also calls INT 10h AX=1201h BL=31h to disable BIOS palette
+;   reload.  Belt-and-suspenders: disable flag + hook re-apply.
 ;
-; EGA ATC (port 3C0h, reset via 3DAh):
-;   16 palette registers, each a 6-bit EGA colour index.
-;   The program converts your RGB values to the nearest EGA colour at
-;   install time and stores them in the resident atc_shadow[] table.
+; EGA path:
+;   Converts RGB to nearest EGA 6-bit values. Builds 16-entry atc_shadow[]
+;   covering all CGA palette routing variants.  Re-applied via ATC ports.
 ;
-; CGA mode 4 pixel -> DAC entry mapping (all entries are programmed):
-;   Pixel 0 (BG):  DAC entry  0
-;   Pixel 1:       DAC entries  2,  3, 10, 11
-;   Pixel 2:       DAC entries  4,  5, 12, 13
-;   Pixel 3:       DAC entries  6,  7, 14, 15
+; CGA mode 4 pixel -> DAC entry mapping (all 16 entries programmed):
+;   DAC 0  = color 0 (background)
+;   DAC 1  = color 1 (our ATC)     DAC 8  = color 2 (our ATC)
+;   DAC 2  = color 1 (pal0 low)    DAC 9  = color 3 (our ATC)
+;   DAC 3  = color 1 (pal1 low)    DAC 10 = color 1 (pal0 high)
+;   DAC 4  = color 2 (pal0 low)    DAC 11 = color 1 (pal1 high)
+;   DAC 5  = color 2 (pal1 low)    DAC 12 = color 2 (pal0 high)
+;   DAC 6  = color 3 (pal0 low)    DAC 13 = color 2 (pal1 high)
+;   DAC 7  = color 3 (pal1 low)    DAC 14 = color 3 (pal0 high)
+;                                   DAC 15 = color 3 (pal1 high)
 ;
 ; IMPORTANT - far-pointer layout in resident data:
 ;   orig_int10_ofs MUST come before orig_int10_seg in memory because
-;   "jmp/call far [mem]" reads offset (low word) then segment (high word).
-;   Getting this wrong causes every non-mode-4 INT 10h call to jump to a
-;   garbage address and crash whatever is running.
+;   "jmp/call far [mem]" reads offset then segment.
+;   Same for orig_int09_ofs / orig_int09_seg.
 ;
 ; TSR SIZE:
-;   Computed at runtime as  (offset_of_behind_tsr_end + 15) / 16  paragraphs.
-;   ORG 0x100 means the label offsets already include the 256-byte PSP,
-;   so no extra PSP addition is needed.
+;   Computed at runtime as  (offset_of_tsr_end + 15) / 16  paragraphs.
+;   ORG 0x100 means label offsets already include the 256-byte PSP.
 ;
-; Usage:  PalSwapT [file.txt] [/1] [/2] [/3] [/4] [/5] [/R] [/U] [/?]
-;   /1 .. /5   Built-in colour presets (see list below)
-;   /R         Reset: TSR installs but uses the default CGA palette
-;   /U         Uninstall the resident TSR from memory
-;   /?         Show help
-;   file.txt   Load colours from a text file (default: PALSWAPT.TXT)
-;
-; Palette text file format (identical to PC1PAL.TXT - 100% cross-compatible):
-;   R,G,B   one line per colour, 4 lines total, values 0-63
-;   Lines starting with ; or # are treated as comments
+; Usage: PalSwapT [file.txt] [/1..5] [/c:c1,c2,c3] [/b:color]
+;                 [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ;
 ; ============================================================================
 
 [BITS 16]
 [ORG 0x100]
+CPU 8086
 
 ; ============================================================================
 ; Constants
@@ -71,37 +78,110 @@ VGA_DAC_DATA        equ 0x3C9
 ATC_ADDR_DATA       equ 0x3C0
 INPUT_STATUS_1      equ 0x3DA
 
-DISPLAY_EGA_COLOR   equ 0x04
-DISPLAY_EGA_MONO    equ 0x05
-DISPLAY_VGA_COLOR   equ 0x08
-DISPLAY_VGA_MONO    equ 0x07
+CONFIG_SIZE         equ 12          ; 4 colors × 3 bytes
+PALETTE_ENTRIES     equ 4
+TEXT_BUF_SIZE       equ 512
 
-CONFIG_SIZE     equ 12
-PALETTE_ENTRIES equ 4
-TEXT_BUF_SIZE   equ 512
+; Keyboard scan codes
+SCAN_1              equ 0x02
+SCAN_5              equ 0x06
+SCAN_P              equ 0x19
+SCAN_R              equ 0x13
+SCAN_UP             equ 0x48
+SCAN_DOWN           equ 0x50
+SCAN_LEFT           equ 0x4B
+SCAN_RIGHT          equ 0x4D
+
+; BIOS keyboard flag bits at 0040:0017h
+SCROLLLOCK_BIT      equ 0x10        ; bit 4 = ScrollLock active
+
+; Adjustment limits
+MAX_BRIGHT_LEVEL    equ 3
+MAX_VIVID_LEVEL     equ 3
 
 ; ============================================================================
-; Jump over resident data to installer main
+; Jump over resident section to installer
 ; ============================================================================
 jmp main
 
 ; ============================================================================
-; RESIDENT DATA
+; =====================  RESIDENT SECTION  ===================================
 ; ============================================================================
-tsr_sig:        db 'PalSwap'
+; Everything from here to tsr_end stays in memory after going TSR.
+; ============================================================================
 
-orig_int10_ofs: dw 0            ; far-pointer layout: offset first...
-orig_int10_seg: dw 0            ; ...segment second  (required for jmp/call far [mem])
-video_type:     db 0            ; 1=EGA, 2=VGA
+; --- TSR Signature (7 bytes) - used for detection/uninstall ---
+tsr_sig:            db 'PalSwap'
 
+; --- Original interrupt vectors (far pointers: offset THEN segment) ---
+orig_int10_ofs:     dw 0
+orig_int10_seg:     dw 0
+orig_int09_ofs:     dw 0
+orig_int09_seg:     dw 0
+
+; --- Video adapter type: 0=none, 1=EGA, 2=VGA ---
+video_type:         db 0
+
+; --- Adjustment state ---
+adj_brightness:     db 0            ; signed: -3..+3 (each step = ±8)
+adj_vivid:          db 0            ; signed: -3..+3
+adj_pop:            db 0            ; 0=off, 1=on (toggle)
+
+; --- Base palette: the original colors loaded from preset/file/cmdline.
+;     Never modified by hotkeys. Adjustments are applied on top of this. ---
+base_palette:
+    db 0,  0,  0               ; color 0: Black
+    db 0, 42, 63               ; color 1: Cyan
+    db 42,  0, 42              ; color 2: Magenta
+    db 63, 63, 63              ; color 3: White
+
+; --- Active palette: recomputed from base + adjustments, written to HW ---
 palette_rgb:
     db 0,  0,  0
     db 0, 42, 63
     db 42,  0, 42
     db 63, 63, 63
 
+; --- EGA ATC shadow table (16 bytes, rebuilt on every adjustment) ---
+atc_shadow:         times 16 db 0
+
+; --- Resident lookup tables ---
+
+; Maps DAC entry 0-15 to user color index 0-3 (conflict-free routing)
+color_to_dac:
+    db 0, 1, 1, 1, 2, 2, 3, 3, 2, 3, 1, 1, 2, 2, 3, 3
+
+; ATC[0-3] = 0,1,8,9 (conflict-free), ATC[4-15] = standard text values
+vga_atc_init:
+    db 0, 1, 8, 9, 4, 5, 0x14, 7, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
+
+; Default EGA ATC register values for the 16 CGA colors
+cga_ega_default:
+    db 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07
+    db 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
+
+; 5 preset palettes + fallback (resident for hotkey switching)
+res_preset_fallback:
+    db 0,  0,  0,    0, 42, 63,   42,  0, 42,   63, 63, 63
+res_preset_1:                       ; Arcade Vibrant
+    db 0,  0,  0,    9, 27, 63,   63,  9,  9,   63, 45, 27
+res_preset_2:                       ; Sierra Natural
+    db 0,  0,  0,    9, 36, 36,   36, 18,  9,   63, 45, 36
+res_preset_3:                       ; C64-inspired
+    db 0,  0,  0,   18, 27, 63,   54, 27,  9,   63, 54, 36
+res_preset_4:                       ; CGA Red/Green/White
+    db 0,  0,  0,   63,  9,  9,    9, 63,  9,   63, 63, 63
+res_preset_5:                       ; CGA Red/Blue/White
+    db 0,  0,  0,   63,  0,  0,    0,  0, 63,   63, 63, 63
+
+; DAC table workspace for VGA (16 entries × 3 bytes = 48 bytes)
+dac_table:          times 48 db 0
+
+; EGA temporary workspace (4 bytes)
+ega_tmp:            times 4 db 0
+
 ; ============================================================================
-; INT 10h HOOK
+; INT 10h HOOK — Re-apply palette after CGA mode 4/5 set
 ; ============================================================================
 tsr_int10:
     cmp ah, 0x00
@@ -110,188 +190,403 @@ tsr_int10:
     je .cga_mode
     cmp al, 0x05
     je .cga_mode
-    jmp .chain
-
-.cga_mode:
-    pushf
-    call far [cs:orig_int10_ofs]
-    cmp byte [cs:video_type], 2
-    je .apply_vga
-    cmp byte [cs:video_type], 1
-    je .apply_ega
-    iret
-
-.apply_vga:
-    call apply_palette_vga
-    iret
-
-.apply_ega:
-    call apply_palette_ega
-    iret
 
 .chain:
     jmp far [cs:orig_int10_ofs]
 
+.cga_mode:
+    ; Let the original handler set the mode first
+    pushf
+    call far [cs:orig_int10_ofs]
+    ; Now re-apply our palette
+    cmp byte [cs:video_type], 2
+    je .do_vga
+    cmp byte [cs:video_type], 1
+    je .do_ega
+    iret
+.do_vga:
+    call apply_palette_vga
+    iret
+.do_ega:
+    call apply_palette_ega
+    iret
+
 ; ============================================================================
-; apply_palette_vga
+; INT 09h HOOK — ScrollLock-gated hotkeys for live palette adjustment
 ; ============================================================================
-apply_palette_vga:
+tsr_int09:
     push ax
+    push ds
+
+    ; Read scan code from keyboard controller
+    in al, 0x60
+
+    ; If this IS the ScrollLock key itself, let the BIOS handle it
+    ; (so the LED toggles normally) — don't intercept
+    cmp al, 0x46               ; ScrollLock make code
+    je .chain_kb
+
+    ; Check if it's a key release (bit 7 set) — ignore releases
+    test al, 0x80
+    jnz .chain_kb
+
+    ; Check ScrollLock state in BIOS keyboard flags
+    mov ax, 0x0040
+    mov ds, ax
+    test byte [0x0017], SCROLLLOCK_BIT
+    jz .chain_kb               ; ScrollLock off → pass through
+
+    ; ScrollLock is ON — check for our hotkeys
+    mov ah, al                 ; save scan code in AH
+
+    ; Preset keys 1-5
+    cmp ah, SCAN_1
+    jb .check_special
+    cmp ah, SCAN_5
+    ja .check_special
+    ; AH = 02h..06h → preset 1..5
+    sub ah, SCAN_1             ; AH = 0..4 = preset index
+    call hotkey_load_preset
+    jmp .swallow
+
+.check_special:
+    cmp ah, SCAN_P
+    je .do_pop
+    cmp ah, SCAN_R
+    je .do_reset
+    cmp ah, SCAN_UP
+    je .do_bright_up
+    cmp ah, SCAN_DOWN
+    je .do_bright_dn
+    cmp ah, SCAN_RIGHT
+    je .do_vivid_up
+    cmp ah, SCAN_LEFT
+    je .do_vivid_dn
+    jmp .chain_kb              ; not our key → pass through
+
+.do_pop:
+    xor byte [cs:adj_pop], 1  ; toggle 0↔1
+    call recompute_and_apply
+    jmp .swallow
+
+.do_reset:
+    ; Load fallback palette, reset all adjustments
+    mov ah, 0                  ; preset index for fallback = special
+    call hotkey_load_fallback
+    jmp .swallow
+
+.do_bright_up:
+    cmp byte [cs:adj_brightness], MAX_BRIGHT_LEVEL
+    jge .swallow               ; already at max
+    inc byte [cs:adj_brightness]
+    call recompute_and_apply
+    jmp .swallow
+
+.do_bright_dn:
+    cmp byte [cs:adj_brightness], -MAX_BRIGHT_LEVEL
+    jle .swallow               ; already at min
+    dec byte [cs:adj_brightness]
+    call recompute_and_apply
+    jmp .swallow
+
+.do_vivid_up:
+    cmp byte [cs:adj_vivid], MAX_VIVID_LEVEL
+    jge .swallow
+    inc byte [cs:adj_vivid]
+    call recompute_and_apply
+    jmp .swallow
+
+.do_vivid_dn:
+    cmp byte [cs:adj_vivid], -MAX_VIVID_LEVEL
+    jle .swallow
+    dec byte [cs:adj_vivid]
+    call recompute_and_apply
+    jmp .swallow
+
+.swallow:
+    ; Acknowledge keystroke: toggle port 61h bit 7 + send EOI to PIC
+    in al, 0x61
+    or al, 0x80
+    out 0x61, al
+    and al, 0x7F
+    out 0x61, al
+    mov al, 0x20
+    out 0x20, al
+    pop ds
+    pop ax
+    iret
+
+.chain_kb:
+    pop ds
+    pop ax
+    jmp far [cs:orig_int09_ofs]
+
+; ============================================================================
+; hotkey_load_preset — Load preset by index (AH = 0..4)
+; Resets adjustments and recomputes.
+; ============================================================================
+hotkey_load_preset:
+    push ax
+    push cx
+    push si
+    push di
+    push es
+
+    push cs
+    pop es
+
+    ; Calculate source: res_preset_1 + AH * 12
+    mov al, ah
+    xor ah, ah
+    mov cl, 12
+    mul cl                     ; AX = preset_index * 12
+    mov si, res_preset_1
+    add si, ax
+
+    ; Copy 12 bytes to base_palette
+    mov di, base_palette
+    mov cx, 12
+.copy:
+    mov al, [cs:si]
+    mov [cs:di], al
+    inc si
+    inc di
+    loop .copy
+
+    ; Reset adjustments
+    mov byte [cs:adj_brightness], 0
+    mov byte [cs:adj_vivid], 0
+    mov byte [cs:adj_pop], 0
+
+    pop es
+    pop di
+    pop si
+    pop cx
+    pop ax
+    call recompute_and_apply
+    ret
+
+; ============================================================================
+; hotkey_load_fallback — Reset to default CGA palette
+; ============================================================================
+hotkey_load_fallback:
+    push cx
+    push si
+    push di
+    push es
+
+    push cs
+    pop es
+
+    mov si, res_preset_fallback
+    mov di, base_palette
+    mov cx, 12
+.copy:
+    mov al, [cs:si]
+    mov [cs:di], al
+    inc si
+    inc di
+    loop .copy
+
+    mov byte [cs:adj_brightness], 0
+    mov byte [cs:adj_vivid], 0
+    mov byte [cs:adj_pop], 0
+
+    pop es
+    pop di
+    pop si
+    pop cx
+    call recompute_and_apply
+    ret
+
+; ============================================================================
+; recompute_and_apply — Rebuild palette_rgb from base + adjustments, then
+;                       write to hardware (VGA DAC or EGA ATC).
+;
+; Pipeline:  base → copy to palette_rgb
+;            → apply vivid (N times boost or mute)
+;            → if pop: saturation_boost + contrast_boost
+;            → apply brightness (adj × 8, clamped)
+;            → rebuild EGA atc_shadow if needed
+;            → write to hardware
+; ============================================================================
+recompute_and_apply:
+    push ax
+    push bx
+    push cx
     push dx
+    push si
+    push di
+    push es
 
-    ; Entry 0: color 0
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 0
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+0]
-    out dx, al
-    mov al, [cs:palette_rgb+1]
-    out dx, al
-    mov al, [cs:palette_rgb+2]
-    out dx, al
+    push cs
+    pop es
 
-    ; Color 1 -> entries 2, 3, 10, 11
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 2
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+3]
-    out dx, al
-    mov al, [cs:palette_rgb+4]
-    out dx, al
-    mov al, [cs:palette_rgb+5]
-    out dx, al
+    ; Step 1: Copy base_palette → palette_rgb
+    mov si, base_palette
+    mov di, palette_rgb
+    mov cx, 12
+.rc_copy:
+    mov al, [cs:si]
+    mov [cs:di], al
+    inc si
+    inc di
+    loop .rc_copy
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 3
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+3]
-    out dx, al
-    mov al, [cs:palette_rgb+4]
-    out dx, al
-    mov al, [cs:palette_rgb+5]
-    out dx, al
+    ; Step 2: Vivid adjustment (-3..+3 steps of saturation boost/mute)
+    mov al, [cs:adj_vivid]
+    test al, al
+    jz .rc_pop_check
+    js .rc_vivid_mute
+    ; Positive: apply saturation boost N times
+    mov cl, al
+    xor ch, ch
+.rc_vivid_boost_loop:
+    call res_saturation_boost
+    loop .rc_vivid_boost_loop
+    jmp .rc_pop_check
+.rc_vivid_mute:
+    ; Negative: apply saturation mute N times
+    neg al
+    mov cl, al
+    xor ch, ch
+.rc_vivid_mute_loop:
+    call res_saturation_mute
+    loop .rc_vivid_mute_loop
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 10
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+3]
-    out dx, al
-    mov al, [cs:palette_rgb+4]
-    out dx, al
-    mov al, [cs:palette_rgb+5]
-    out dx, al
+.rc_pop_check:
+    ; Step 3: Pop = saturation boost + contrast boost
+    cmp byte [cs:adj_pop], 0
+    je .rc_brightness
+    call res_saturation_boost
+    call res_contrast_boost
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 11
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+3]
-    out dx, al
-    mov al, [cs:palette_rgb+4]
-    out dx, al
-    mov al, [cs:palette_rgb+5]
-    out dx, al
+.rc_brightness:
+    ; Step 4: Brightness (-3..+3 steps, each step = ±8)
+    mov al, [cs:adj_brightness]
+    test al, al
+    jz .rc_apply
+    js .rc_dim
+    ; Positive: brighten
+    mov cl, al
+    xor ch, ch
+.rc_bright_loop:
+    call res_brighten
+    loop .rc_bright_loop
+    jmp .rc_apply
+.rc_dim:
+    neg al
+    mov cl, al
+    xor ch, ch
+.rc_dim_loop:
+    call res_dim
+    loop .rc_dim_loop
 
-    ; Color 2 -> entries 4, 5, 12, 13
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 4
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+6]
-    out dx, al
-    mov al, [cs:palette_rgb+7]
-    out dx, al
-    mov al, [cs:palette_rgb+8]
-    out dx, al
+.rc_apply:
+    ; Step 5: Rebuild EGA shadow if needed, then write to hardware
+    cmp byte [cs:video_type], 2
+    je .rc_vga
+    cmp byte [cs:video_type], 1
+    je .rc_ega
+    jmp .rc_done
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 5
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+6]
-    out dx, al
-    mov al, [cs:palette_rgb+7]
-    out dx, al
-    mov al, [cs:palette_rgb+8]
-    out dx, al
+.rc_vga:
+    call apply_palette_vga
+    jmp .rc_done
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 12
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+6]
-    out dx, al
-    mov al, [cs:palette_rgb+7]
-    out dx, al
-    mov al, [cs:palette_rgb+8]
-    out dx, al
+.rc_ega:
+    call res_build_ega_shadow
+    call apply_palette_ega
 
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 13
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+6]
-    out dx, al
-    mov al, [cs:palette_rgb+7]
-    out dx, al
-    mov al, [cs:palette_rgb+8]
-    out dx, al
-
-    ; Color 3 -> entries 6, 7, 14, 15
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 6
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+9]
-    out dx, al
-    mov al, [cs:palette_rgb+10]
-    out dx, al
-    mov al, [cs:palette_rgb+11]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 7
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+9]
-    out dx, al
-    mov al, [cs:palette_rgb+10]
-    out dx, al
-    mov al, [cs:palette_rgb+11]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 14
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+9]
-    out dx, al
-    mov al, [cs:palette_rgb+10]
-    out dx, al
-    mov al, [cs:palette_rgb+11]
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 15
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+9]
-    out dx, al
-    mov al, [cs:palette_rgb+10]
-    out dx, al
-    mov al, [cs:palette_rgb+11]
-    out dx, al
-
+.rc_done:
+    pop es
+    pop di
+    pop si
     pop dx
+    pop cx
+    pop bx
     pop ax
     ret
 
 ; ============================================================================
-; apply_palette_ega
+; apply_palette_vga — Table-driven VGA DAC write + ATC programming
+; Reads from palette_rgb[], uses color_to_dac[] for mapping.
+; All addresses via CS: since this runs from the TSR.
+; ============================================================================
+apply_palette_vga:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    ; Build 48-byte DAC table from palette_rgb using color_to_dac mapping
+    mov si, color_to_dac
+    mov di, dac_table
+    mov cx, 16
+.build_dac:
+    mov al, [cs:si]            ; AL = user color index (0-3)
+    inc si
+    ; Multiply by 3 for palette_rgb offset
+    mov bl, al
+    shl bl, 1
+    add bl, al                 ; BL = index * 3
+    xor bh, bh
+    mov al, [cs:palette_rgb + bx]
+    mov [cs:di], al
+    mov al, [cs:palette_rgb + bx + 1]
+    mov [cs:di + 1], al
+    mov al, [cs:palette_rgb + bx + 2]
+    mov [cs:di + 2], al
+    add di, 3
+    loop .build_dac
+
+    ; Write all 16 DAC entries starting at index 0
+    mov dx, VGA_DAC_WRITE_IDX
+    xor al, al
+    out dx, al
+    mov si, dac_table
+    mov cx, 48
+    mov dx, VGA_DAC_DATA
+.write_dac:
+    mov al, [cs:si]
+    inc si
+    out dx, al
+    loop .write_dac
+
+    ; Program ATC[0-15] for conflict-free routing
+    cli
+    mov dx, INPUT_STATUS_1
+    in al, dx                  ; Reset ATC flip-flop
+
+    xor bx, bx
+.write_atc:
+    mov dx, ATC_ADDR_DATA
+    mov al, bl
+    out dx, al
+    jmp short $+2
+    mov al, [cs:vga_atc_init + bx]
+    out dx, al
+    jmp short $+2
+    inc bx
+    cmp bx, 16
+    jb .write_atc
+
+    mov al, 0x20               ; Re-enable screen
+    out dx, al
+    sti
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; apply_palette_ega — Write 16-entry atc_shadow[] to EGA ATC ports
 ; ============================================================================
 apply_palette_ega:
     push ax
@@ -302,8 +597,7 @@ apply_palette_ega:
     mov dx, INPUT_STATUS_1
     in al, dx
 
-    mov bx, 0
-
+    xor bx, bx
 .ega_loop:
     mov dx, ATC_ADDR_DATA
     mov al, bl
@@ -326,31 +620,284 @@ apply_palette_ega:
     ret
 
 ; ============================================================================
-; RESIDENT AREA END - everything above stays resident
+; res_build_ega_shadow — Convert palette_rgb to EGA values, fill atc_shadow
 ; ============================================================================
-atc_shadow:     times 16 db 0
-behind_tsr_end: db 0            ; dummy byte so NASM knows the address
+res_build_ega_shadow:
+    push ax
+    push bx
+    push cx
+    push si
+    push di
+
+    ; Start with CGA defaults
+    mov si, cga_ega_default
+    mov di, atc_shadow
+    mov cx, 16
+.copy_defaults:
+    mov al, [cs:si]
+    mov [cs:di], al
+    inc si
+    inc di
+    loop .copy_defaults
+
+    ; Convert 4 RGB colors to EGA 6-bit values in ega_tmp
+    mov si, palette_rgb
+    mov di, ega_tmp
+    mov cx, 4
+.conv_loop:
+    xor bl, bl
+    mov al, [cs:si]            ; Red
+    inc si
+    cmp al, 32
+    jb .r_half
+    or bl, 0x04
+    jmp .r_done
+.r_half:
+    cmp al, 16
+    jb .r_done
+    or bl, 0x20
+.r_done:
+    mov al, [cs:si]            ; Green
+    inc si
+    cmp al, 32
+    jb .g_half
+    or bl, 0x02
+    jmp .g_done
+.g_half:
+    cmp al, 16
+    jb .g_done
+    or bl, 0x10
+.g_done:
+    mov al, [cs:si]            ; Blue
+    inc si
+    cmp al, 32
+    jb .b_half
+    or bl, 0x01
+    jmp .b_done
+.b_half:
+    cmp al, 16
+    jb .b_done
+    or bl, 0x08
+.b_done:
+    mov [cs:di], bl
+    inc di
+    loop .conv_loop
+
+    ; Place EGA values into atc_shadow at all CGA mode 4 positions
+    mov al, [cs:ega_tmp+0]
+    mov [cs:atc_shadow+0], al
+
+    mov al, [cs:ega_tmp+1]
+    mov [cs:atc_shadow+2], al
+    mov [cs:atc_shadow+3], al
+    mov [cs:atc_shadow+10], al
+    mov [cs:atc_shadow+11], al
+
+    mov al, [cs:ega_tmp+2]
+    mov [cs:atc_shadow+4], al
+    mov [cs:atc_shadow+5], al
+    mov [cs:atc_shadow+12], al
+    mov [cs:atc_shadow+13], al
+
+    mov al, [cs:ega_tmp+3]
+    mov [cs:atc_shadow+6], al
+    mov [cs:atc_shadow+7], al
+    mov [cs:atc_shadow+14], al
+    mov [cs:atc_shadow+15], al
+
+    pop di
+    pop si
+    pop cx
+    pop bx
+    pop ax
+    ret
 
 ; ============================================================================
-; INSTALLER (discarded after TSR install)
+; RESIDENT ADJUSTMENT ROUTINES
+; These operate on palette_rgb (colors 1-3 only, skip background at offset 0).
+; All use CS: segment override since they run from the TSR.
+; ============================================================================
+
+; --- res_brighten: Add 8 to each RGB channel, clamp at 63 ---
+res_brighten:
+    push cx
+    push si
+    mov si, palette_rgb + 3    ; skip color 0
+    mov cx, 9
+.loop:
+    mov al, [cs:si]
+    add al, 8
+    cmp al, 63
+    jbe .ok
+    mov al, 63
+.ok:
+    mov [cs:si], al
+    inc si
+    loop .loop
+    pop si
+    pop cx
+    ret
+
+; --- res_dim: Subtract 8 from each RGB channel, clamp at 0 ---
+res_dim:
+    push cx
+    push si
+    mov si, palette_rgb + 3
+    mov cx, 9
+.loop:
+    mov al, [cs:si]
+    sub al, 8
+    jnc .ok
+    xor al, al
+.ok:
+    mov [cs:si], al
+    inc si
+    loop .loop
+    pop si
+    pop cx
+    ret
+
+; --- res_saturation_boost: ch + (ch - gray) / 2, clamp 0-63 ---
+res_saturation_boost:
+    push bx
+    push cx
+    push si
+    mov si, palette_rgb + 3
+    mov cx, 3                  ; 3 color triples
+.color:
+    xor ax, ax
+    mov al, [cs:si]
+    add al, [cs:si+1]
+    add al, [cs:si+2]         ; AL = R+G+B
+    mov bl, 3
+    div bl                     ; AL = gray
+    mov bl, al                 ; BL = gray
+
+    push cx
+    mov cx, 3
+.ch:
+    mov al, [cs:si]
+    sub al, bl                 ; AL = ch - gray (signed)
+    sar al, 1                 ; AL = (ch - gray) / 2
+    add al, [cs:si]           ; AL = ch + (ch - gray) / 2
+    test al, al
+    jns .not_neg
+    xor al, al
+    jmp .store
+.not_neg:
+    cmp al, 63
+    jbe .store
+    mov al, 63
+.store:
+    mov [cs:si], al
+    inc si
+    loop .ch
+    pop cx
+    loop .color
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; --- res_saturation_mute: (ch + gray) / 2 ---
+res_saturation_mute:
+    push bx
+    push cx
+    push si
+    mov si, palette_rgb + 3
+    mov cx, 3
+.color:
+    xor ax, ax
+    mov al, [cs:si]
+    add al, [cs:si+1]
+    add al, [cs:si+2]
+    mov bl, 3
+    div bl
+    mov bl, al                 ; BL = gray
+
+    push cx
+    mov cx, 3
+.ch:
+    mov al, [cs:si]
+    add al, bl
+    shr al, 1                 ; (ch + gray) / 2
+    mov [cs:si], al
+    inc si
+    loop .ch
+    pop cx
+    loop .color
+    pop si
+    pop cx
+    pop bx
+    ret
+
+; --- res_contrast_boost: ch + (ch - 31) / 2, clamp 0-63 ---
+res_contrast_boost:
+    push cx
+    push si
+    mov si, palette_rgb + 3
+    mov cx, 9
+.loop:
+    mov al, [cs:si]
+    sub al, 31                 ; signed
+    sar al, 1
+    add al, [cs:si]
+    test al, al
+    jns .not_neg
+    xor al, al
+    jmp .store
+.not_neg:
+    cmp al, 63
+    jbe .store
+    mov al, 63
+.store:
+    mov [cs:si], al
+    inc si
+    loop .loop
+    pop si
+    pop cx
+    ret
+
+; ============================================================================
+; End of resident section
+; ============================================================================
+tsr_end:
+
+; ============================================================================
+; =====================  TRANSIENT SECTION  ==================================
+; ============================================================================
+; Everything below is discarded after going TSR.
+; ============================================================================
+
+; ============================================================================
+; Main installer entry point
 ; ============================================================================
 main:
     mov dx, msg_banner
     call print_string
 
+    ; Detect EGA/VGA
     call detect_video
     cmp byte [video_type], 0
     je .no_adapter
 
+    ; Check for /U (uninstall) first
     call check_uninstall
     cmp al, 1
     je .do_uninstall
 
+    ; Parse all command-line switches
     call check_switches
+    push ax                    ; save switch result
+    call parse_bg_color
+    call parse_fg_colors
+    pop ax
+    cmp byte [parse_error], 0
+    jne .exit_no_tsr
     cmp al, 1
     je .show_help
     cmp al, 2
-    je .do_reset
+    je .do_reset_install
     cmp al, 3
     je .preset_1
     cmp al, 4
@@ -361,7 +908,6 @@ main:
     je .preset_4
     cmp al, 7
     je .preset_5
-
     jmp .load_file
 
 .no_adapter:
@@ -372,75 +918,125 @@ main:
 .show_help:
     mov dx, msg_help
     call print_string
+    mov dx, msg_pause
+    call print_string
+.flush_kb:
+    mov ah, 0x01
+    int 0x16
+    jz .wait_key
+    mov ah, 0x00
+    int 0x16
+    jmp .flush_kb
+.wait_key:
+    mov ah, 0x00
+    int 0x16
+    mov dx, msg_help2
+    call print_string
     jmp .exit_no_tsr
 
-.do_reset:
+.do_reset_install:
     mov dx, msg_resetting
     call print_string
-    jmp .install
+    ; Load fallback palette as base
+    mov si, res_preset_fallback
+    jmp .apply_preset
 
 .preset_1:
     mov dx, msg_preset1
     call print_string
-    mov si, preset_arcade
+    mov si, res_preset_1
     jmp .apply_preset
-
 .preset_2:
     mov dx, msg_preset2
     call print_string
-    mov si, preset_sierra
+    mov si, res_preset_2
     jmp .apply_preset
-
 .preset_3:
     mov dx, msg_preset3
     call print_string
-    mov si, preset_c64
+    mov si, res_preset_3
     jmp .apply_preset
-
 .preset_4:
     mov dx, msg_preset4
     call print_string
-    mov si, preset_cga_text
+    mov si, res_preset_4
     jmp .apply_preset
-
 .preset_5:
     mov dx, msg_preset5
     call print_string
-    mov si, preset_cga_palette
+    mov si, res_preset_5
     jmp .apply_preset
 
 .apply_preset:
-    mov di, palette_rgb
+    ; Copy 12 bytes from preset to config_buffer
+    mov di, config_buffer
     mov cx, 12
     cld
     rep movsb
-    jmp .install
+    call apply_bg_override
+    call apply_fg_override
+    call apply_adjustments
+    jmp .do_install
 
 .load_file:
     call load_config
     jc .use_fallback
     call validate_palette
     jc .use_fallback
-    jmp .install
+    call apply_bg_override
+    call apply_fg_override
+    call apply_adjustments
+    jmp .do_install
 
 .use_fallback:
+    ; Only show message if user explicitly specified a file
+    cmp byte [explicit_file], 1
+    jne .skip_fallback_msg
     mov dx, msg_fallback
     call print_string
+.skip_fallback_msg:
+    call load_fallback_to_config
+    call apply_bg_override
+    call apply_fg_override
+    call apply_adjustments
 
-.install:
+.do_install:
+    ; Copy final config_buffer → base_palette AND palette_rgb
+    mov si, config_buffer
+    mov di, base_palette
+    mov cx, 12
+    cld
+    rep movsb
+    mov si, config_buffer
+    mov di, palette_rgb
+    mov cx, 12
+    cld
+    rep movsb
+
+    ; Reset adjustment state
+    mov byte [adj_brightness], 0
+    mov byte [adj_vivid], 0
+    mov byte [adj_pop], 0
+
+    ; Print loaded colors
     call print_colors
 
+    ; Build EGA shadow if needed
     cmp byte [video_type], 1
     jne .skip_ega_init
-    call build_ega_atc_shadow
+    call res_build_ega_shadow
 .skip_ega_init:
 
-    ; Apply palette immediately for the preview/text mode
+    ; Apply palette now (preview in text mode)
     cmp byte [video_type], 2
     je .apply_vga_now
     call apply_palette_ega
     jmp .check_installed
 .apply_vga_now:
+    ; On VGA, also disable BIOS palette reload (belt-and-suspenders with hook)
+    mov ax, 0x1201
+    mov bl, 0x31
+    int 0x10
     call apply_palette_vga
 
 .check_installed:
@@ -454,22 +1050,30 @@ main:
     mov [orig_int10_seg], es
     mov [orig_int10_ofs], bx
 
-    ; Install hook
+    ; Save original INT 09h
+    mov ax, 0x3509
+    int 0x21
+    mov [orig_int09_seg], es
+    mov [orig_int09_ofs], bx
+
+    ; Install INT 10h hook
     mov ax, 0x2510
     mov dx, tsr_int10
+    int 0x21
+
+    ; Install INT 09h hook
+    mov ax, 0x2509
+    mov dx, tsr_int09
     int 0x21
 
     mov dx, msg_installed
     call print_string
 
-    ; Go resident
-    ; Compute resident size in paragraphs at runtime
-    ; DX = (offset_of_behind_tsr_end + 256 + 15) / 16
-    ; 256 = PSP size, +15 for rounding up
-    mov dx, behind_tsr_end      ; offset already includes PSP (ORG 0x100)
-    add dx, 15                  ; round up to paragraph boundary
+    ; Go resident — compute size in paragraphs
+    mov dx, tsr_end
+    add dx, 15
     mov cl, 4
-    shr dx, cl                  ; divide by 16 to get paragraphs
+    shr dx, cl
     mov ax, 0x3100
     int 0x21
 
@@ -487,45 +1091,66 @@ main:
     int 0x21
 
 ; ============================================================================
-; detect_video
+; detect_video — Set [video_type]: 0=none, 1=EGA, 2=VGA
 ; ============================================================================
 detect_video:
     push ax
     push bx
+    push cx
 
+    ; Try VGA first (INT 10h AX=1A00h)
     mov ax, 0x1A00
     int 0x10
     cmp al, 0x1A
+    jne .try_ega
+    cmp bl, 0x08               ; VGA analog color
+    je .is_vga
+    cmp bl, 0x07               ; VGA analog mono
     je .is_vga
 
+.try_ega:
     mov ax, 0x1200
     mov bl, 0x10
     int 0x10
     cmp bl, 0x10
     je .not_found
 
+    ; Distinguish EGA from VGA
+    mov ax, 0x1A00
+    int 0x10
+    cmp al, 0x1A
+    je .check_vga_again
+
 .is_ega:
     mov byte [video_type], 1
     mov dx, msg_detected_ega
     call print_string
-    jmp .dv_done
+    jmp .done
+
+.check_vga_again:
+    cmp bl, 0x08
+    je .is_vga
+    cmp bl, 0x07
+    je .is_vga
+    jmp .is_vga                ; VGA BIOS present, treat as VGA
 
 .is_vga:
     mov byte [video_type], 2
     mov dx, msg_detected_vga
     call print_string
-    jmp .dv_done
+    jmp .done
 
 .not_found:
     mov byte [video_type], 0
 
-.dv_done:
+.done:
+    pop cx
     pop bx
     pop ax
     ret
 
 ; ============================================================================
-; check_already_loaded
+; check_already_loaded — AL=1 if TSR signature found at INT 10h handler
 ; ============================================================================
 check_already_loaded:
     push bx
@@ -534,16 +1159,20 @@ check_already_loaded:
     push di
     push es
 
+    ; Get current INT 10h vector
     mov ax, 0x3510
     int 0x21
-
-    mov di, tsr_sig
-    mov si, tsr_sig
+    ; ES:BX → current INT 10h handler
+    ; Check if it points to our signature
+    ; Our TSR has: jmp main, then tsr_sig at known offset
+    ; The signature 'PalSwap' is at tsr_sig in seg pointed to by ES
+    mov di, tsr_sig             ; offset of signature in our code
+    mov si, tsr_sig             ; compare against our own copy
     mov cx, 7
     push ds
     push cs
-    pop ds
-    repe cmpsb
+    pop ds                     ; DS:SI = CS:tsr_sig
+    repe cmpsb                 ; compare ES:DI vs DS:SI
     pop ds
     jne .not_loaded
 
@@ -562,7 +1191,7 @@ check_already_loaded:
     ret
 
 ; ============================================================================
-; uninstall_tsr
+; uninstall_tsr — Restore original INT 09h + INT 10h, free TSR memory
 ; ============================================================================
 uninstall_tsr:
     push ax
@@ -571,9 +1200,10 @@ uninstall_tsr:
     push ds
     push es
 
+    ; Get current INT 10h vector to find our TSR segment
     mov ax, 0x3510
     int 0x21
-
+    ; ES:BX → current handler; verify signature
     mov di, tsr_sig
     mov si, tsr_sig
     mov cx, 7
@@ -584,16 +1214,36 @@ uninstall_tsr:
     pop ds
     jne .not_us
 
+    ; ES = TSR segment. Restore original INT 10h from TSR's saved values.
     mov ax, 0x2510
-    push es
     push word [es:orig_int10_seg]
     pop ds
     mov dx, [es:orig_int10_ofs]
     int 0x21
-    pop es
 
+    ; Restore original INT 09h
+    push cs
+    pop ds                     ; restore DS for later
+    mov ax, 0x2509
+    push word [es:orig_int09_seg]
+    pop ds
+    mov dx, [es:orig_int09_ofs]
+    int 0x21
+
+    ; Free TSR memory block (ES = segment)
     mov ah, 0x49
     int 0x21
+
+    push cs
+    pop ds                     ; ensure DS = CS for print_string
+
+    ; On VGA, re-enable default palette loading
+    cmp byte [video_type], 2
+    jne .skip_reenable
+    mov ax, 0x1200             ; AL=00 = enable palette reload
+    mov bl, 0x31
+    int 0x10
+.skip_reenable:
 
     mov dx, msg_unloaded
     jmp .ui_msg
@@ -602,6 +1252,8 @@ uninstall_tsr:
     mov dx, msg_unload_error
 
 .ui_msg:
+    push cs
+    pop ds
     call print_string
 
     pop es
@@ -612,184 +1264,652 @@ uninstall_tsr:
     ret
 
 ; ============================================================================
-; build_ega_atc_shadow
-; ============================================================================
-build_ega_atc_shadow:
-    push ax
-    push bx
-    push cx
-    push si
-    push di
-
-    mov si, cga_ega_default
-    mov di, atc_shadow
-    mov cx, 16
-    cld
-    rep movsb
-
-    ; Convert 4 RGB colors to EGA 6-bit values, store in ega_tmp
-    mov si, palette_rgb
-    mov di, ega_tmp
-    mov cx, 4
-
-.conv_loop:
-    xor bl, bl
-    lodsb                       ; Red
-    cmp al, 32
-    jb .r_half
-    or bl, 0x04
-    jmp .r_done
-.r_half:
-    cmp al, 16
-    jb .r_done
-    or bl, 0x20
-.r_done:
-    lodsb                       ; Green
-    cmp al, 32
-    jb .g_half
-    or bl, 0x02
-    jmp .g_done
-.g_half:
-    cmp al, 16
-    jb .g_done
-    or bl, 0x10
-.g_done:
-    lodsb                       ; Blue
-    cmp al, 32
-    jb .b_half
-    or bl, 0x01
-    jmp .b_done
-.b_half:
-    cmp al, 16
-    jb .b_done
-    or bl, 0x08
-.b_done:
-    mov [di], bl
-    inc di
-    loop .conv_loop
-
-    ; Place EGA values into atc_shadow at CGA mode 4 positions
-    mov al, [ega_tmp+0]
-    mov [atc_shadow+0], al
-
-    mov al, [ega_tmp+1]
-    mov [atc_shadow+2], al
-    mov [atc_shadow+3], al
-    mov [atc_shadow+10], al
-    mov [atc_shadow+11], al
-
-    mov al, [ega_tmp+2]
-    mov [atc_shadow+4], al
-    mov [atc_shadow+5], al
-    mov [atc_shadow+12], al
-    mov [atc_shadow+13], al
-
-    mov al, [ega_tmp+3]
-    mov [atc_shadow+6], al
-    mov [atc_shadow+7], al
-    mov [atc_shadow+14], al
-    mov [atc_shadow+15], al
-
-    pop di
-    pop si
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-; ============================================================================
-; check_uninstall -> AL=1 if /U on cmdline
+; check_uninstall — AL=1 if /U found on command line
 ; ============================================================================
 check_uninstall:
     push si
     mov si, 0x81
-.cu_skip:
+.skip:
     lodsb
     cmp al, ' '
-    je .cu_skip
+    je .skip
     cmp al, 0x0D
-    je .cu_none
+    je .none
     cmp al, '/'
-    je .cu_slash
+    je .slash
     cmp al, '-'
-    je .cu_slash
-    jmp .cu_none
-.cu_slash:
+    je .slash
+    jmp .none
+.slash:
     lodsb
     cmp al, 'U'
-    je .cu_yes
+    je .yes
     cmp al, 'u'
-    je .cu_yes
-.cu_none:
+    je .yes
+.none:
     xor al, al
-    jmp .cu_done
-.cu_yes:
+    jmp .done
+.yes:
     mov al, 1
-.cu_done:
+.done:
     pop si
     ret
 
 ; ============================================================================
-; check_switches -> AL: 0=none/file, 1=help, 2=reset, 3-7=presets
+; check_switches — Multi-pass scanner. Returns AL:
+;   0=none/file, 1=help, 2=reset, 3-7=presets
+; Also sets [brightness_adj], [vivid_adj], [pop_flag] from modifiers.
 ; ============================================================================
 check_switches:
     push si
     mov si, 0x81
-.cs_skip:
+
+.skip_spaces:
     lodsb
     cmp al, ' '
-    je .cs_skip
+    je .skip_spaces
     cmp al, 0x0D
-    je .cs_none
+    je .no_switch
+
     cmp al, '/'
-    je .cs_char
+    je .check_char
     cmp al, '-'
-    je .cs_char
-    jmp .cs_none
-.cs_char:
+    je .check_char
+    jmp .no_switch
+
+.check_char:
     lodsb
     cmp al, '?'
-    je .cs_help
+    je .is_help
     cmp al, 'H'
-    je .cs_help
+    je .is_help
     cmp al, 'h'
-    je .cs_help
+    je .is_help
     cmp al, 'R'
-    je .cs_reset
+    je .is_reset
     cmp al, 'r'
-    je .cs_reset
+    je .is_reset
+    cmp al, 'U'
+    je .skip_token              ; /U handled separately
+    cmp al, 'u'
+    je .skip_token
+    cmp al, 'b'
+    je .skip_bg_switch
+    cmp al, 'B'
+    je .skip_bg_switch
+    cmp al, 'c'
+    je .skip_c_switch
+    cmp al, 'C'
+    je .skip_c_switch
+    cmp al, 'd'
+    je .parse_dim_switch
+    cmp al, 'D'
+    je .parse_dim_switch
+    cmp al, 'v'
+    je .parse_vivid_switch
+    cmp al, 'V'
+    je .parse_vivid_switch
+    cmp al, 'p'
+    je .is_pop
+    cmp al, 'P'
+    je .is_pop
     cmp al, '1'
-    je .cs_p1
+    je .is_preset1
     cmp al, '2'
-    je .cs_p2
+    je .is_preset2
     cmp al, '3'
-    je .cs_p3
+    je .is_preset3
     cmp al, '4'
-    je .cs_p4
+    je .is_preset4
     cmp al, '5'
-    je .cs_p5
-    jmp .cs_none
-.cs_help:  mov al, 1
-    jmp .cs_done
-.cs_reset: mov al, 2
-    jmp .cs_done
-.cs_p1:    mov al, 3
-    jmp .cs_done
-.cs_p2:    mov al, 4
-    jmp .cs_done
-.cs_p3:    mov al, 5
-    jmp .cs_done
-.cs_p4:    mov al, 6
-    jmp .cs_done
-.cs_p5:    mov al, 7
-    jmp .cs_done
-.cs_none:  xor al, al
-.cs_done:
+    je .is_preset5
+    jmp .bad_switch
+
+.skip_token:
+    lodsb
+    cmp al, ' '
+    je .skip_spaces
+    cmp al, 0x0D
+    je .no_switch
+    jmp .skip_token
+
+.skip_bg_switch:
+.skip_c_switch:
+    lodsb
+    cmp al, ':'
+    jne .bad_switch
+.skip_switch_arg:
+    lodsb
+    cmp al, ' '
+    je .skip_spaces
+    cmp al, 0x0D
+    je .no_switch
+    jmp .skip_switch_arg
+
+.parse_dim_switch:
+    lodsb
+    cmp al, ':'
+    jne .bad_switch
+    lodsb
+    cmp al, '+'
+    je .dim_plus
+    cmp al, '-'
+    je .dim_minus
+    jmp .bad_switch
+.dim_plus:
+    mov byte [brightness_adj_cmd], 1
+    jmp .after_modifier
+.dim_minus:
+    mov byte [brightness_adj_cmd], 2
+    jmp .after_modifier
+
+.parse_vivid_switch:
+    lodsb
+    cmp al, ':'
+    jne .bad_switch
+    lodsb
+    cmp al, '+'
+    je .vivid_plus
+    cmp al, '-'
+    je .vivid_minus
+    jmp .bad_switch
+.vivid_plus:
+    mov byte [vivid_adj_cmd], 1
+    jmp .after_modifier
+.vivid_minus:
+    mov byte [vivid_adj_cmd], 2
+    jmp .after_modifier
+
+.is_pop:
+    mov byte [pop_flag_cmd], 1
+
+.after_modifier:
+    lodsb
+    cmp al, ' '
+    je .skip_spaces
+    cmp al, 0x0D
+    je .no_switch
+    dec si
+    jmp .skip_spaces
+
+.is_help:     mov byte [switch_result], 1
+    jmp .sw_done
+.is_reset:    mov byte [switch_result], 2
+    jmp .sw_done
+.is_preset1:  mov byte [switch_result], 3
+    jmp .after_modifier
+.is_preset2:  mov byte [switch_result], 4
+    jmp .after_modifier
+.is_preset3:  mov byte [switch_result], 5
+    jmp .after_modifier
+.is_preset4:  mov byte [switch_result], 6
+    jmp .after_modifier
+.is_preset5:  mov byte [switch_result], 7
+    jmp .after_modifier
+
+.bad_switch:
+    mov dx, msg_bad_switch
+    call print_string
+    mov byte [parse_error], 1
+    xor al, al
+    jmp .sw_done
+
+.no_switch:
+.sw_done:
+    mov al, [switch_result]
     pop si
     ret
 
 ; ============================================================================
-; load_config
+; parse_bg_color — Scan for /b:colorname, set bg_specified + bg_color
+; ============================================================================
+parse_bg_color:
+    push si
+    push di
+    push cx
+    push bx
+
+    mov byte [bg_specified], 0
+    xor ch, ch
+    mov cl, [0x80]
+    or cx, cx
+    jz .pb_done
+    mov si, 0x81
+
+.pb_scan:
+    cmp cx, 0
+    je .pb_done
+    lodsb
+    dec cx
+    cmp al, '/'
+    je .pb_check_b
+    cmp al, '-'
+    je .pb_check_b
+    jmp .pb_scan
+
+.pb_check_b:
+    cmp cx, 2
+    jb .pb_done
+    lodsb
+    dec cx
+    or al, 0x20
+    cmp al, 'b'
+    jne .pb_scan
+    lodsb
+    dec cx
+    cmp al, ':'
+    jne .pb_scan
+
+    mov bx, bg_color_names
+
+.pb_try_entry:
+    cmp byte [bx], 0
+    je .pb_not_found
+    push si
+    push cx
+
+.pb_match_char:
+    cmp byte [bx], 0
+    je .pb_check_end
+    cmp cx, 0
+    je .pb_no_match_pop
+    lodsb
+    dec cx
+    or al, 0x20
+    cmp al, [bx]
+    jne .pb_no_match_pop
+    inc bx
+    jmp .pb_match_char
+
+.pb_check_end:
+    cmp cx, 0
+    je .pb_found
+    mov al, [si]
+    cmp al, ' '
+    je .pb_found
+    cmp al, 0x0D
+    je .pb_found
+
+.pb_no_match_pop:
+    pop cx
+    pop si
+.pb_skip_name:
+    cmp byte [bx], 0
+    je .pb_skip_rgb
+    inc bx
+    jmp .pb_skip_name
+.pb_skip_rgb:
+    inc bx
+    add bx, 3
+    jmp .pb_try_entry
+
+.pb_found:
+    pop cx
+    pop cx
+    inc bx
+    mov al, [bx]
+    mov [bg_color], al
+    mov al, [bx+1]
+    mov [bg_color+1], al
+    mov al, [bx+2]
+    mov [bg_color+2], al
+    mov byte [bg_specified], 1
+    jmp .pb_done
+
+.pb_not_found:
+    mov dx, msg_bad_bg
+    call print_string
+    mov byte [parse_error], 1
+
+.pb_done:
+    pop bx
+    pop cx
+    pop di
+    pop si
+    ret
+
+; ============================================================================
+; parse_fg_colors — Scan for /c:name1,name2,name3
+; ============================================================================
+parse_fg_colors:
+    push si
+    push di
+    push cx
+    push bx
+
+    mov byte [fg_specified], 0
+    xor ch, ch
+    mov cl, [0x80]
+    or cx, cx
+    jz .pf_done
+    mov si, 0x81
+
+.pf_scan:
+    cmp cx, 0
+    je .pf_done
+    lodsb
+    dec cx
+    cmp al, '/'
+    je .pf_check_c
+    cmp al, '-'
+    je .pf_check_c
+    jmp .pf_scan
+
+.pf_check_c:
+    cmp cx, 2
+    jb .pf_done
+    lodsb
+    dec cx
+    or al, 0x20
+    cmp al, 'c'
+    jne .pf_scan
+    lodsb
+    dec cx
+    cmp al, ':'
+    jne .pf_scan
+
+    mov di, fg_colors
+    mov byte [fg_count], 0
+
+.pf_next_color:
+    call .pf_lookup_color
+    jc .pf_error
+    add di, 3
+    inc byte [fg_count]
+    cmp byte [fg_count], 3
+    je .pf_all_found
+    cmp cx, 0
+    je .pf_error
+    lodsb
+    dec cx
+    cmp al, ','
+    jne .pf_error
+    jmp .pf_next_color
+
+.pf_all_found:
+    mov byte [fg_specified], 1
+    jmp .pf_done
+
+.pf_error:
+    mov dx, msg_bad_fg
+    call print_string
+    mov byte [parse_error], 1
+
+.pf_done:
+    pop bx
+    pop cx
+    pop di
+    pop si
+    ret
+
+; --- Internal: look up one color name at SI, write RGB to [DI] ---
+.pf_lookup_color:
+    mov bx, bg_color_names
+
+.pf_try_entry:
+    cmp byte [bx], 0
+    je .pf_not_found
+    push si
+    push cx
+
+.pf_match_char:
+    cmp byte [bx], 0
+    je .pf_check_delim
+    cmp cx, 0
+    je .pf_no_match_pop
+    lodsb
+    dec cx
+    or al, 0x20
+    cmp al, [bx]
+    jne .pf_no_match_pop
+    inc bx
+    jmp .pf_match_char
+
+.pf_check_delim:
+    cmp cx, 0
+    je .pf_color_found
+    mov al, [si]
+    cmp al, ','
+    je .pf_color_found
+    cmp al, ' '
+    je .pf_color_found
+    cmp al, 0x0D
+    je .pf_color_found
+
+.pf_no_match_pop:
+    pop cx
+    pop si
+.pf_skip_entry:
+    cmp byte [bx], 0
+    je .pf_skip_entry_rgb
+    inc bx
+    jmp .pf_skip_entry
+.pf_skip_entry_rgb:
+    inc bx
+    add bx, 3
+    jmp .pf_try_entry
+
+.pf_color_found:
+    pop cx
+    pop cx
+    inc bx
+    mov al, [bx]
+    mov [di], al
+    mov al, [bx+1]
+    mov [di+1], al
+    mov al, [bx+2]
+    mov [di+2], al
+    clc
+    ret
+
+.pf_not_found:
+    stc
+    ret
+
+; ============================================================================
+; apply_bg_override — Override config_buffer[0..2] if /b:color was given
+; ============================================================================
+apply_bg_override:
+    cmp byte [bg_specified], 0
+    je .abg_done
+    mov al, [bg_color]
+    mov [config_buffer], al
+    mov al, [bg_color+1]
+    mov [config_buffer+1], al
+    mov al, [bg_color+2]
+    mov [config_buffer+2], al
+.abg_done:
+    ret
+
+; ============================================================================
+; apply_fg_override — Override config_buffer[3..11] if /c:name,name,name
+; ============================================================================
+apply_fg_override:
+    cmp byte [fg_specified], 0
+    je .afg_done
+    mov si, fg_colors
+    mov di, config_buffer + 3
+    mov cx, 9
+    cld
+    rep movsb
+.afg_done:
+    ret
+
+; ============================================================================
+; apply_adjustments — Apply /V, /P, /D from command line to config_buffer
+; ============================================================================
+apply_adjustments:
+    push ax
+
+    ; Vivid
+    cmp byte [vivid_adj_cmd], 0
+    je .adj_check_pop
+    cmp byte [vivid_adj_cmd], 1
+    je .adj_vivid_boost
+    call inst_saturation_mute
+    jmp .adj_check_pop
+.adj_vivid_boost:
+    call inst_saturation_boost
+
+.adj_check_pop:
+    ; Pop
+    cmp byte [pop_flag_cmd], 0
+    je .adj_check_bright
+    call inst_saturation_boost
+    call inst_contrast_boost
+
+.adj_check_bright:
+    ; Brightness
+    cmp byte [brightness_adj_cmd], 0
+    je .adj_done
+    cmp byte [brightness_adj_cmd], 1
+    je .adj_brighten
+    call inst_dim
+    jmp .adj_done
+.adj_brighten:
+    call inst_brighten
+
+.adj_done:
+    pop ax
+    ret
+
+; --- Installer adjustment routines (work on config_buffer, not palette_rgb) ---
+
+inst_brighten:
+    push cx
+    push si
+    mov si, config_buffer + 3
+    mov cx, 9
+.loop:
+    mov al, [si]
+    add al, 8
+    cmp al, 63
+    jbe .ok
+    mov al, 63
+.ok:
+    mov [si], al
+    inc si
+    loop .loop
+    pop si
+    pop cx
+    ret
+
+inst_dim:
+    push cx
+    push si
+    mov si, config_buffer + 3
+    mov cx, 9
+.loop:
+    mov al, [si]
+    sub al, 8
+    jnc .ok
+    xor al, al
+.ok:
+    mov [si], al
+    inc si
+    loop .loop
+    pop si
+    pop cx
+    ret
+
+inst_saturation_boost:
+    push bx
+    push cx
+    push si
+    mov si, config_buffer + 3
+    mov cx, 3
+.color:
+    xor ax, ax
+    mov al, [si]
+    add al, [si+1]
+    add al, [si+2]
+    mov bl, 3
+    div bl
+    mov bl, al
+    push cx
+    mov cx, 3
+.ch:
+    mov al, [si]
+    sub al, bl
+    sar al, 1
+    add al, [si]
+    test al, al
+    jns .not_neg
+    xor al, al
+    jmp .store
+.not_neg:
+    cmp al, 63
+    jbe .store
+    mov al, 63
+.store:
+    mov [si], al
+    inc si
+    loop .ch
+    pop cx
+    loop .color
+    pop si
+    pop cx
+    pop bx
+    ret
+
+inst_saturation_mute:
+    push bx
+    push cx
+    push si
+    mov si, config_buffer + 3
+    mov cx, 3
+.color:
+    xor ax, ax
+    mov al, [si]
+    add al, [si+1]
+    add al, [si+2]
+    mov bl, 3
+    div bl
+    mov bl, al
+    push cx
+    mov cx, 3
+.ch:
+    mov al, [si]
+    add al, bl
+    shr al, 1
+    mov [si], al
+    inc si
+    loop .ch
+    pop cx
+    loop .color
+    pop si
+    pop cx
+    pop bx
+    ret
+
+inst_contrast_boost:
+    push cx
+    push si
+    mov si, config_buffer + 3
+    mov cx, 9
+.loop:
+    mov al, [si]
+    sub al, 31
+    sar al, 1
+    add al, [si]
+    test al, al
+    jns .not_neg
+    xor al, al
+    jmp .store
+.not_neg:
+    cmp al, 63
+    jbe .store
+    mov al, 63
+.store:
+    mov [si], al
+    inc si
+    loop .loop
+    pop si
+    pop cx
+    ret
+
+; ============================================================================
+; load_config — Load palette from file into config_buffer
 ; ============================================================================
 load_config:
     push ax
@@ -799,13 +1919,18 @@ load_config:
 
     call get_filename
     jc .use_default
+    mov byte [explicit_file], 1
     jmp .open_file
+
 .use_default:
+    mov byte [explicit_file], 0
     mov dx, default_filename
+
 .open_file:
     mov ax, 0x3D00
     int 0x21
     jc .file_error
+
     mov [file_handle], ax
     mov bx, ax
     mov ah, 0x3F
@@ -824,19 +1949,26 @@ load_config:
     jc .parse_error
     clc
     jmp .lc_done
+
 .parse_error:
     mov dx, msg_parse_error
     call print_string
     stc
     jmp .lc_done
+
 .close_error:
     mov ah, 0x3E
     mov bx, [file_handle]
     int 0x21
+
 .file_error:
+    cmp byte [explicit_file], 0
+    je .silent_fail
     mov dx, msg_file_error
     call print_string
+.silent_fail:
     stc
+
 .lc_done:
     pop dx
     pop cx
@@ -845,7 +1977,7 @@ load_config:
     ret
 
 ; ============================================================================
-; parse_text_palette
+; parse_text_palette — Parse RGB text into config_buffer
 ; ============================================================================
 parse_text_palette:
     push ax
@@ -854,66 +1986,75 @@ parse_text_palette:
     push dx
     push si
     push di
+
     mov si, text_buffer
-    mov di, palette_rgb
+    mov di, config_buffer
     mov cx, [bytes_read]
     xor bx, bx
-.ptp_next:
+
+.next_line:
     cmp bl, 4
-    jae .ptp_done
+    jae .parse_done
     or cx, cx
-    jz .ptp_check
-.ptp_skip_ws:
+    jz .check_count
+
+.skip_ws:
     or cx, cx
-    jz .ptp_check
+    jz .check_count
     lodsb
     dec cx
     cmp al, ' '
-    je .ptp_skip_ws
+    je .skip_ws
     cmp al, 9
-    je .ptp_skip_ws
+    je .skip_ws
     cmp al, 13
-    je .ptp_skip_ws
+    je .skip_ws
     cmp al, 10
-    je .ptp_next
+    je .next_line
     cmp al, ';'
-    je .ptp_eol
+    je .skip_to_eol
     cmp al, '#'
-    je .ptp_eol
+    je .skip_to_eol
+
     dec si
     inc cx
     call parse_number
-    jc .ptp_fail
+    jc .parse_fail
     mov [di], al
     call skip_separator
-    jc .ptp_fail
+    jc .parse_fail
     call parse_number
-    jc .ptp_fail
+    jc .parse_fail
     mov [di+1], al
     call skip_separator
-    jc .ptp_fail
+    jc .parse_fail
     call parse_number
-    jc .ptp_fail
+    jc .parse_fail
     mov [di+2], al
     add di, 3
     inc bl
-.ptp_eol:
+
+.skip_to_eol:
     or cx, cx
-    jz .ptp_check
+    jz .check_count
     lodsb
     dec cx
     cmp al, 10
-    jne .ptp_eol
-    jmp .ptp_next
-.ptp_check:
+    jne .skip_to_eol
+    jmp .next_line
+
+.check_count:
     cmp bl, 4
-    jb .ptp_fail
-.ptp_done:
+    jb .parse_fail
+
+.parse_done:
     clc
-    jmp .ptp_exit
-.ptp_fail:
+    jmp .parse_exit
+
+.parse_fail:
     stc
-.ptp_exit:
+
+.parse_exit:
     pop di
     pop si
     pop dx
@@ -923,21 +2064,21 @@ parse_text_palette:
     ret
 
 ; ============================================================================
-; parse_number
+; parse_number — Parse decimal 0-63 from SI/CX
 ; ============================================================================
 parse_number:
     push bx
     push dx
     xor ax, ax
     xor bx, bx
-.pn_loop:
+.digit_loop:
     or cx, cx
-    jz .pn_check
+    jz .check_digits
     mov dl, [si]
     cmp dl, '0'
-    jb .pn_check
+    jb .check_digits
     cmp dl, '9'
-    ja .pn_check
+    ja .check_digits
     push dx
     mov dx, 10
     mul dx
@@ -948,17 +2089,17 @@ parse_number:
     inc si
     dec cx
     inc bx
-    jmp .pn_loop
-.pn_check:
+    jmp .digit_loop
+.check_digits:
     or bx, bx
-    jz .pn_err
+    jz .num_error
     cmp ax, 64
-    jae .pn_err
+    jae .num_error
     clc
-    jmp .pn_done
-.pn_err:
+    jmp .num_done
+.num_error:
     stc
-.pn_done:
+.num_done:
     pop dx
     pop bx
     ret
@@ -969,93 +2110,109 @@ parse_number:
 skip_separator:
     push ax
     or cx, cx
-    jz .ss_err
-.ss_loop:
+    jz .sep_error
+.sep_loop:
     lodsb
     dec cx
     cmp al, ','
-    je .ss_more
+    je .sep_more
     cmp al, ' '
-    je .ss_more
+    je .sep_more
     cmp al, 9
-    je .ss_more
+    je .sep_more
     cmp al, 10
-    je .ss_err
+    je .sep_error
     cmp al, 13
-    je .ss_err
+    je .sep_error
     dec si
     inc cx
     clc
-    jmp .ss_done
-.ss_more:
+    jmp .sep_done
+.sep_more:
     or cx, cx
-    jz .ss_err
-    jmp .ss_loop
-.ss_err:
+    jz .sep_error
+    jmp .sep_loop
+.sep_error:
     stc
-.ss_done:
+.sep_done:
     pop ax
     ret
 
 ; ============================================================================
-; get_filename
+; get_filename — Extract filename from command line (skip switches)
 ; ============================================================================
 get_filename:
     push si
     push di
     mov si, 0x81
     mov di, filename_buffer
-.gf_skip:
+
+.skip_spaces:
     lodsb
     cmp al, ' '
-    je .gf_skip
+    je .skip_spaces
     cmp al, 0x0D
-    je .gf_none
+    je .no_filename
     cmp al, 0x0A
-    je .gf_none
+    je .no_filename
     cmp al, '/'
-    je .gf_none
+    je .skip_token
     cmp al, '-'
-    je .gf_none
-.gf_copy:
+    je .skip_token
+    jmp .copy_loop
+
+.skip_token:
+    lodsb
     cmp al, ' '
-    je .gf_end
+    je .skip_spaces
     cmp al, 0x0D
-    je .gf_end
+    je .no_filename
     cmp al, 0x0A
-    je .gf_end
+    je .no_filename
+    jmp .skip_token
+
+.copy_loop:
+    cmp al, ' '
+    je .end_filename
+    cmp al, 0x0D
+    je .end_filename
+    cmp al, 0x0A
+    je .end_filename
     stosb
     lodsb
-    jmp .gf_copy
-.gf_end:
+    jmp .copy_loop
+
+.end_filename:
     xor al, al
     stosb
     mov dx, filename_buffer
     clc
     jmp .gf_done
-.gf_none:
+
+.no_filename:
     stc
+
 .gf_done:
     pop di
     pop si
     ret
 
 ; ============================================================================
-; validate_palette
+; validate_palette — Check all 12 bytes in config_buffer are 0-63
 ; ============================================================================
 validate_palette:
     push cx
     push si
-    mov si, palette_rgb
+    mov si, config_buffer
     mov cx, CONFIG_SIZE
-.vp_loop:
+.check_loop:
     lodsb
     cmp al, 64
-    jae .vp_bad
-    loop .vp_loop
+    jae .invalid
+    loop .check_loop
     clc
     jmp .vp_done
-.vp_bad:
+.invalid:
     mov dx, msg_invalid
     call print_string
     stc
@@ -1065,18 +2222,37 @@ validate_palette:
     ret
 
 ; ============================================================================
-; print_colors
+; load_fallback_to_config — Copy fallback CGA palette to config_buffer
+; ============================================================================
+load_fallback_to_config:
+    push si
+    push di
+    push cx
+    mov si, res_preset_fallback
+    mov di, config_buffer
+    mov cx, CONFIG_SIZE
+    cld
+    rep movsb
+    pop cx
+    pop di
+    pop si
+    ret
+
+; ============================================================================
+; print_colors — Print loaded palette with color blocks
 ; ============================================================================
 print_colors:
     push ax
     push bx
     push cx
     push si
+
     mov dx, msg_colors
     call print_string
-    mov si, palette_rgb
+    mov si, config_buffer
     mov cl, 0
-.pc_loop:
+
+.color_loop:
     mov dx, msg_color_prefix
     call print_string
     mov al, cl
@@ -1084,6 +2260,7 @@ print_colors:
     call print_char
     mov dx, msg_color_sep
     call print_string
+
     lodsb
     call print_number
     mov al, ','
@@ -1094,15 +2271,18 @@ print_colors:
     call print_char
     lodsb
     call print_number
+
     mov al, ' '
     call print_char
     mov al, cl
     call print_color_block
+
     mov dx, msg_crlf
     call print_string
     inc cl
     cmp cl, 4
-    jb .pc_loop
+    jb .color_loop
+
     pop si
     pop cx
     pop bx
@@ -1110,7 +2290,7 @@ print_colors:
     ret
 
 ; ============================================================================
-; print_color_block
+; print_color_block — 4 solid blocks in specified color attribute
 ; ============================================================================
 print_color_block:
     push ax
@@ -1118,10 +2298,10 @@ print_color_block:
     push cx
     mov bl, al
     or al, al
-    jz .pcc_attr
+    jz .have_attr
     shl bl, 1
     add bl, 9
-.pcc_attr:
+.have_attr:
     mov bh, 0
     mov al, 219
     mov cx, 4
@@ -1139,7 +2319,7 @@ print_color_block:
     ret
 
 ; ============================================================================
-; print_number, print_char, print_string
+; print_number — Print AL as decimal (0-99)
 ; ============================================================================
 print_number:
     push ax
@@ -1149,10 +2329,10 @@ print_number:
     mov bl, 10
     div bl
     or al, al
-    jz .pn2_ones
+    jz .ones
     add al, '0'
     call print_char
-.pn2_ones:
+.ones:
     mov al, ah
     add al, '0'
     call print_char
@@ -1161,6 +2341,9 @@ print_number:
     pop ax
     ret
 
+; ============================================================================
+; print_char — Print character in AL via DOS
+; ============================================================================
 print_char:
     push ax
     push dx
@@ -1171,6 +2354,9 @@ print_char:
     pop ax
     ret
 
+; ============================================================================
+; print_string — Print $-terminated string at DX via DOS
+; ============================================================================
 print_string:
     push ax
     mov ah, 0x09
@@ -1179,44 +2365,63 @@ print_string:
     ret
 
 ; ============================================================================
-; Data
+; Data Section (transient — discarded after TSR)
 ; ============================================================================
+
 msg_banner:
-    db 'PalSwapT v2.1 - CGA Palette TSR for EGA/VGA', 13, 10
-    db 'By Retro Erik - 2026 - Hooks INT 10h to survive game mode resets', 13, 10
-    db 'Compatible with PC1PAL palette text files.', 13, 10, '$'
+    db 'PalSwapT v3.0 - CGA Palette TSR with Live Hotkeys', 13, 10
+    db 'By Retro Erik - 2026 - Hooks INT 09h + INT 10h', 13, 10
+    db 'Type: PALSWAPT /? for help', 13, 10, '$'
 
 msg_detected_ega:
-    db 'Adapter: EGA detected.', 13, 10, '$'
+    db 'Adapter: EGA detected. Using Attribute Controller.', 13, 10, '$'
 msg_detected_vga:
-    db 'Adapter: VGA detected.', 13, 10, '$'
+    db 'Adapter: VGA detected. Using DAC registers (full RGB).', 13, 10, '$'
 msg_no_adapter:
-    db 'Error: No EGA or VGA adapter found.', 13, 10, '$'
-
-msg_installed:
-    db 'TSR installed. INT 10h hooked.', 13, 10
-    db 'Run your CGA game now. Use PalSwapT /U to uninstall.', 13, 10, '$'
-msg_already_loaded:
-    db 'PalSwapT TSR already installed.', 13, 10
-    db 'Use PalSwapT /U to uninstall first, then reinstall with new palette.', 13, 10, '$'
-msg_unloaded:
-    db 'PalSwapT TSR uninstalled. INT 10h restored.', 13, 10, '$'
-msg_unload_error:
-    db 'Error: PalSwapT TSR not found in INT 10h chain.', 13, 10, '$'
+    db 'Error: No EGA or VGA adapter detected.', 13, 10, '$'
 
 msg_help:
     db 13, 10
-    db 'Usage: PalSwapT [file.txt] [/1..5] [/R] [/U] [/?]', 13, 10, 13, 10
-    db '  Installs as TSR. Hooks INT 10h and re-applies palette after', 13, 10
-    db '  every CGA mode 4/5 set. Palette survives game mode resets.', 13, 10, 13, 10
-    db '  /R  Default palette   /U  Uninstall TSR   /?  Help', 13, 10
-    db '  /1  Arcade Vibrant  Black, Blue(9,27,63), Red(63,9,9), Skin', 13, 10
-    db '  /2  Sierra Natural  Black, Teal(9,36,36), Brown, Skin', 13, 10
-    db '  /3  C64-inspired    Black, Blue(18,27,63), Orange(54,27,9), Skin', 13, 10
-    db '  /4  CGA Red/Green   Black, Red, Green, White', 13, 10
-    db '  /5  CGA Red/Blue    Black, Red, Blue, White', 13, 10, 13, 10
-    db '  Text file: R,G,B per line (0-63), compatible with PC1PAL.TXT', 13, 10
-    db '  Default file: PALSWAPT.TXT', 13, 10
+    db 'Usage: PALSWAPT [file.txt] [/1..5] [/c:c1,c2,c3] [/b:color]', 13, 10
+    db '                [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]', 13, 10
+    db 13, 10
+    db '  Installs as TSR. Hooks INT 10h (survives game mode resets)', 13, 10
+    db '  and INT 09h (live palette hotkeys via ScrollLock).', 13, 10
+    db 13, 10
+    db '  file.txt       Load custom palette (default: PALSWAPT.TXT)', 13, 10
+    db '  /c:c1,c2,c3    Set colors 1-3 by name (see list below)', 13, 10
+    db '  /b:color        Set background color by name', 13, 10
+    db '  /P              Pop - boost saturation + contrast', 13, 10
+    db '  /V:+  /V:-      Increase / decrease saturation', 13, 10
+    db '  /D:+  /D:-      Brighten / dim colors', 13, 10
+    db '  /R              Install with default CGA palette', 13, 10
+    db '  /U              Uninstall TSR from memory', 13, 10
+    db '  /?              Show this help', 13, 10
+    db '$'
+
+msg_pause:
+    db 13, 10, '--- Press any key for more ---', '$'
+
+msg_help2:
+    db 13, 10, 13, 10
+    db 'Built-in presets:', 13, 10
+    db '  /1  Arcade Vibrant   /2  Sierra Natural   /3  C64-inspired', 13, 10
+    db '  /4  CGA Red/Green    /5  CGA Red/Blue', 13, 10
+    db 13, 10
+    db 'Live hotkeys (turn ScrollLock ON to activate):', 13, 10
+    db '  1..5       Switch preset instantly', 13, 10
+    db '  P          Toggle Pop (saturation + contrast)', 13, 10
+    db '  R          Reset to default CGA palette', 13, 10
+    db '  Up/Down    Brighten / Dim', 13, 10
+    db '  Left/Right Less / More vivid (saturation)', 13, 10
+    db '  ScrollLock OFF = normal keyboard, hotkeys disabled', 13, 10
+    db 13, 10
+    db 'Color names for /c: and /b:', 13, 10
+    db '  black, blue, green, cyan, red, magenta, brown, lightgray,', 13, 10
+    db '  darkgray, lightblue, lightgreen, lightcyan, lightred,', 13, 10
+    db '  lightmagenta, yellow, white', 13, 10
+    db 13, 10
+    db 'Text file: R,G,B per line (0-63). Compatible with PC1PAL.TXT', 13, 10
     db '$'
 
 msg_preset1:     db 'Preset: Arcade Vibrant', 13, 10, '$'
@@ -1225,6 +2430,17 @@ msg_preset3:     db 'Preset: C64-inspired', 13, 10, '$'
 msg_preset4:     db 'Preset: CGA Red/Green/White', 13, 10, '$'
 msg_preset5:     db 'Preset: CGA Red/Blue/White', 13, 10, '$'
 msg_resetting:   db 'Using default CGA palette.', 13, 10, '$'
+msg_installed:
+    db 'TSR installed. INT 09h + INT 10h hooked.', 13, 10
+    db 'ScrollLock ON = hotkeys active (1-5/P/R/arrows).', 13, 10
+    db 'Run your CGA game now. Use PALSWAPT /U to uninstall.', 13, 10, '$'
+msg_already_loaded:
+    db 'PalSwapT already installed.', 13, 10
+    db 'Use PALSWAPT /U to uninstall first.', 13, 10, '$'
+msg_unloaded:
+    db 'PalSwapT uninstalled. INT 09h + INT 10h restored.', 13, 10, '$'
+msg_unload_error:
+    db 'Error: PalSwapT not found in interrupt chain.', 13, 10, '$'
 msg_colors:      db 'Colors (R,G,B):', 13, 10, '$'
 msg_color_prefix:db '  Color $'
 msg_color_sep:   db ': $'
@@ -1233,35 +2449,54 @@ msg_fallback:    db 'Warning: palette load failed, using default.', 13, 10, '$'
 msg_file_error:  db 'Warning: Cannot open palette file.', 13, 10, '$'
 msg_parse_error: db 'Warning: Cannot parse palette file.', 13, 10, '$'
 msg_invalid:     db 'Warning: Value out of range (must be 0-63).', 13, 10, '$'
+msg_bad_bg:      db 'Warning: Unknown background color name. Use /? for list.', 13, 10, '$'
+msg_bad_fg:      db 'Warning: Bad /c: colors. Use /c:name,name,name (see /?).', 13, 10, '$'
+msg_bad_switch:  db 'Error: Unknown switch. Use /? for help.', 13, 10, '$'
 
 default_filename: db 'PALSWAPT.TXT', 0
 
-cga_ega_default:
-    db 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07
-    db 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
+; ============================================================================
+; Color name table (shared by /b: and /c: parsers)
+; ============================================================================
+bg_color_names:
+    db 'black', 0,          0,  0,  0
+    db 'blue', 0,           0,  0, 42
+    db 'green', 0,          0, 42,  0
+    db 'cyan', 0,           0, 42, 42
+    db 'red', 0,           42,  0,  0
+    db 'magenta', 0,       42,  0, 42
+    db 'brown', 0,         42, 21,  0
+    db 'lightgray', 0,     42, 42, 42
+    db 'darkgray', 0,      21, 21, 21
+    db 'lightblue', 0,     21, 21, 63
+    db 'lightgreen', 0,    21, 63, 21
+    db 'lightcyan', 0,     21, 63, 63
+    db 'lightred', 0,      63, 21, 21
+    db 'lightmagenta', 0,  63, 21, 63
+    db 'yellow', 0,        63, 63, 21
+    db 'white', 0,         63, 63, 63
+    db 0                    ; end of table
 
-preset_arcade:
-    db 0, 0, 0,   9, 27, 63,  63, 9, 9,   63, 45, 27
+; ============================================================================
+; Installer variables (transient)
+; ============================================================================
+explicit_file:      db 0
+parse_error:        db 0
+brightness_adj_cmd: db 0        ; 0=none, 1=brighten, 2=dim
+vivid_adj_cmd:      db 0        ; 0=none, 1=boost, 2=mute
+pop_flag_cmd:       db 0        ; 1=apply pop from command line
+switch_result:      db 0
+bg_specified:       db 0
+bg_color:           db 0, 0, 0
+fg_specified:       db 0
+fg_count:           db 0
+fg_colors:          times 9 db 0
+file_handle:        dw 0
+bytes_read:         dw 0
 
-preset_sierra:
-    db 0, 0, 0,   9, 36, 36,  36, 18, 9,  63, 45, 36
-
-preset_c64:
-    db 0, 0, 0,  18, 27, 63,  54, 27, 9,  63, 54, 36
-
-preset_cga_text:
-    db 0, 0, 0,  63, 9, 9,   9, 63, 9,   63, 63, 63
-
-preset_cga_palette:
-    db 0, 0, 0,  63, 0, 0,   0, 0, 63,   63, 63, 63
-
-; Installer-only variables
-file_handle:  dw 0
-bytes_read:   dw 0
-ega_tmp:      times 4 db 0
-
-filename_buffer: times 128 db 0
-text_buffer:     times TEXT_BUF_SIZE db 0
+filename_buffer:    times 128 db 0
+config_buffer:      times CONFIG_SIZE db 0
+text_buffer:        times TEXT_BUF_SIZE db 0
 
 ; ============================================================================
 ; End of PalSwapT.ASM
