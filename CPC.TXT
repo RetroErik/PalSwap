@@ -1,0 +1,57 @@
+; CPC.TXT - 9 palettes using the Amstrad CPC hardware palette
+; For use with PalSwapT (multi-palette file, 6-bit RGB 0-63)
+; Source: Lospec.com - Amstrad CPC palette
+
+; Palette 1: Classic CPC UI / loaders (White, Bright Cyan, Bright Green)
+0,0,0
+63,63,63
+0,63,63
+0,63,0
+
+; Palette 2: Action, explosions (Bright Red, Orange, Bright Yellow)
+0,0,0
+63,0,0
+63,31,0
+63,63,0
+
+; Palette 3: Water, sci-fi (Bright Blue, Dark Cyan, Sky Blue)
+0,0,0
+0,0,63
+0,32,32
+0,32,63
+
+; Palette 4: Terrain, platforms (Dark Green, Bright Green, Bright Yellow)
+0,0,0
+0,32,0
+0,63,0
+63,63,0
+
+; Palette 5: Fantasy, magic (Dark Magenta, Bright Magenta, White)
+0,0,0
+32,0,32
+63,0,63
+63,63,63
+
+; Palette 6: Moody / late-era (Dark Blue, Dark Red, Gray)
+0,0,0
+0,0,31
+32,0,0
+32,32,32
+
+; Palette 7: Demo / polished (Pastel Blue, Pastel Green, White)
+0,0,0
+32,32,63
+32,63,32
+63,63,63
+
+; Palette 8: Arcade, score-attack (Bright Red, White, Bright Cyan)
+0,0,0
+63,0,0
+63,63,63
+0,63,63
+
+; Palette 9: Clean HUD + playfield (Gray, Bright Blue, White)
+0,0,0
+32,32,32
+0,0,63
+63,63,63

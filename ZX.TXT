@@ -1,0 +1,57 @@
+; ZX.TXT - 9 palettes using the ZX Spectrum palette
+; For use with PalSwapT (multi-palette file, 6-bit RGB 0-63)
+; Source: Lospec.com - ZX Spectrum palette
+
+; Palette 1: Classic UI / text (White, Bright White, Bright Yellow)
+0,0,0
+53,53,53
+63,63,63
+63,63,0
+
+; Palette 2: Action, enemies (Red, Bright Red, Yellow)
+0,0,0
+53,0,0
+63,0,0
+53,53,0
+
+; Palette 3: Water, sci-fi (Blue, Bright Blue, Cyan)
+0,0,0
+0,0,53
+0,0,63
+0,53,53
+
+; Palette 4: Terrain, platforms (Green, Bright Green, Yellow)
+0,0,0
+0,53,0
+0,63,0
+53,53,0
+
+; Palette 5: Fantasy, magic (Magenta, Bright Magenta, White)
+0,0,0
+53,0,53
+63,0,63
+53,53,53
+
+; Palette 6: Early arcade ports (Blue, Red, White)
+0,0,0
+0,0,53
+53,0,0
+53,53,53
+
+; Palette 7: Clean, modern (Cyan, Bright Cyan, White)
+0,0,0
+0,53,53
+0,63,63
+53,53,53
+
+; Palette 8: Outdoor / organic (Green, Cyan, Bright Green)
+0,0,0
+0,53,0
+0,53,53
+0,63,0
+
+; Palette 9: Maximum contrast (White, Red, Cyan)
+0,0,0
+53,53,53
+53,0,0
+0,53,53
