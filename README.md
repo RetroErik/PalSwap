@@ -237,8 +237,8 @@ Colour tables in resident memory (sourced from [Lospec.com](https://lospec.com/p
 ## Building from Source
 
 ```dos
-nasm -f bin -o PalSwapT.COM PalSwapT.asm
-nasm -f bin -o palswap.com PalSwap.asm
+nasm -f bin -o PalSwapT.COM "Asm Source/PalSwapT.asm"
+nasm -f bin -o palswap.com "Asm Source/PalSwap.asm"
 ```
 
 Requires NASM. Produces plain DOS `.COM` files.
@@ -249,15 +249,14 @@ Requires NASM. Produces plain DOS `.COM` files.
 
 | File | Description |
 |------|-------------|
-| `PalSwapT.asm` | TSR version — NASM source (main tool) |
+| `Asm Source/PalSwapT.asm` | TSR version — NASM source (main tool) |
+| `Asm Source/PalSwap.asm`  | Non-TSR version — one-shot palette setter |
 | `PalSwapT.COM` | Assembled TSR binary, ready to run |
-| `PalSwap.asm`  | Non-TSR version — one-shot palette setter |
 | `palswap.com`  | Assembled non-TSR binary |
 | `C64.TXT`      | 9 mini-palettes using Commodore 64 colours (Lospec) |
 | `ZX.TXT`       | 9 mini-palettes using ZX Spectrum colours (Lospec) |
 | `CPC.TXT`      | 9 mini-palettes using Amstrad CPC colours (Lospec) |
-| `SUNSET.TXT`   | Single warm sunset palette |
-| `TANDY.TXT`    | Tandy palette |
+| `Illustrations/` | SVG/PNG palette diagrams and DAC routing maps |
 | `README.md`    | This file |
 
 ---
