@@ -2,34 +2,43 @@
 ; PalSwapT.ASM - CGA Palette Override TSR with Live Hotkeys
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 3.0 - TSR with ScrollLock hotkeys
+; Version 3.3 - TSR with Ctrl+Alt hotkeys
 ; ============================================================================
 ;
 ; Combines the full palette engine of PalSwap.asm with a TSR that hooks
 ; both INT 10h (video mode change) and INT 09h (keyboard) so you can:
 ;   - Survive CGA mode resets (palette re-applied after every mode 4/5 set)
-;   - Switch presets LIVE while a game is running (ScrollLock + 1..5)
-;   - Adjust brightness, saturation, pop on the fly (ScrollLock + arrows/P/R)
+;   - Switch presets LIVE while a game is running (Ctrl+Alt + 1..9)
+;   - Adjust brightness, saturation, pop on the fly (Ctrl+Alt + arrows/P/R)
+;   - Generate random palettes from CGA/C64/Amstrad CPC/ZX Spectrum colors
 ;
 ; HOTKEY SYSTEM:
-;   Turn ScrollLock ON to activate palette edit mode (LED = indicator).
-;   While ScrollLock is ON:
-;     1..5         Load preset 1-5 (Arcade, Sierra, C64, Red/Green, Red/Blue)
+;   Hold Ctrl+Alt and press a hotkey to adjust the palette:
+;     1..9         Load preset 1-9
 ;     P            Toggle Pop (saturation + contrast boost)
-;     R            Reset to default CGA palette
+;     R            Reset to default CGA palette (high-intensity)
 ;     Up / Down    Brighten / Dim (+/-8 per step, max 3 steps)
 ;     Left / Right Less vivid / More vivid (saturation, max 3 steps)
-;   Turn ScrollLock OFF to return to normal — all keys pass through.
-;   (ScrollLock is never used by CGA-era games, so zero interference.)
+;     Space        Random palette from 15 CGA colors
+;     C            Random palette from C64 colors (Lospec)
+;     A            Random palette from Amstrad CPC colors
+;     Z            Random palette from ZX Spectrum colors
+;   Release Ctrl+Alt to return to normal — all keys pass through.
+;
+; BUILT-IN PRESETS:
+;     /1  Arcade Vibrant     /2  Sierra Natural     /3  C64-inspired
+;     /4  CGA Red/Green      /5  CGA Red/Blue       /6  Amstrad CPC
+;     /7  Pastel             /8  Mono Amber          /9  Mono Green
 ;
 ; HOW IT WORKS:
-;   1. You run PalSwapT [/1..5 | file.txt | /c:... | /b:...] before the game.
+;   1. You run PalSwapT [/1..9 | file.txt | /c:... | /b:...] before the game.
 ;   2. PalSwapT loads the palette, hooks INT 09h + INT 10h, stays resident.
 ;   3. When the game calls INT 10h AH=00h AL=04h/05h (set CGA mode 4/5):
 ;        a. The original INT 10h handler runs first (sets the hardware mode).
 ;        b. Our hook immediately re-programs the VGA DAC or EGA ATC.
-;   4. While running, press ScrollLock then 1-5/P/R/arrows to adjust live.
-;   5. Run "PalSwapT /U" to uninstall.
+;   4. While running, hold Ctrl+Alt and press hotkeys to adjust live.
+;   5. Re-run PalSwapT with new arguments to update the resident palette.
+;   6. Run "PalSwapT /U" to uninstall.
 ;
 ; VGA path:
 ;   Table-driven DAC write using color_to_dac[] for conflict-free routing.
@@ -61,7 +70,7 @@
 ;   Computed at runtime as  (offset_of_tsr_end + 15) / 16  paragraphs.
 ;   ORG 0x100 means label offsets already include the 256-byte PSP.
 ;
-; Usage: PalSwapT [file.txt] [/1..5] [/c:c1,c2,c3] [/b:color]
+; Usage: PalSwapT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]
 ;                 [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ;
 ; ============================================================================
@@ -78,22 +87,31 @@ VGA_DAC_DATA        equ 0x3C9
 ATC_ADDR_DATA       equ 0x3C0
 INPUT_STATUS_1      equ 0x3DA
 
-CONFIG_SIZE         equ 12          ; 4 colors × 3 bytes
+CONFIG_SIZE         equ 12          ; 4 colors × 3 bytes (single palette)
 PALETTE_ENTRIES     equ 4
-TEXT_BUF_SIZE       equ 512
+MAX_PALETTES        equ 9           ; max palettes in a file
+MULTI_CONFIG_SIZE   equ 108         ; 9 palettes × 12 bytes
+TEXT_BUF_SIZE       equ 1024
 
 ; Keyboard scan codes
 SCAN_1              equ 0x02
 SCAN_5              equ 0x06
+SCAN_9              equ 0x0A
 SCAN_P              equ 0x19
 SCAN_R              equ 0x13
 SCAN_UP             equ 0x48
 SCAN_DOWN           equ 0x50
 SCAN_LEFT           equ 0x4B
 SCAN_RIGHT          equ 0x4D
+SCAN_SPACE          equ 0x39
+SCAN_C              equ 0x2E
+SCAN_A              equ 0x1E
+SCAN_Z              equ 0x2C
 
 ; BIOS keyboard flag bits at 0040:0017h
-SCROLLLOCK_BIT      equ 0x10        ; bit 4 = ScrollLock active
+CTRL_BIT            equ 0x04        ; bit 2 = Ctrl key held
+ALT_BIT             equ 0x08        ; bit 3 = Alt key held
+CTRLALT_BITS        equ 0x0C        ; both Ctrl + Alt held
 
 ; Adjustment limits
 MAX_BRIGHT_LEVEL    equ 3
@@ -126,20 +144,24 @@ video_type:         db 0
 adj_brightness:     db 0            ; signed: -3..+3 (each step = ±8)
 adj_vivid:          db 0            ; signed: -3..+3
 adj_pop:            db 0            ; 0=off, 1=on (toggle)
+palette_active:     db 1            ; 1=apply custom palette, 0=use defaults
+
+; --- Random number generator seed ---
+rng_seed:           dw 0
 
 ; --- Base palette: the original colors loaded from preset/file/cmdline.
 ;     Never modified by hotkeys. Adjustments are applied on top of this. ---
 base_palette:
     db 0,  0,  0               ; color 0: Black
-    db 0, 42, 63               ; color 1: Cyan
-    db 42,  0, 42              ; color 2: Magenta
+    db 0, 63, 63               ; color 1: Light Cyan (high intensity)
+    db 63,  0, 63              ; color 2: Light Magenta (high intensity)
     db 63, 63, 63              ; color 3: White
 
 ; --- Active palette: recomputed from base + adjustments, written to HW ---
 palette_rgb:
     db 0,  0,  0
-    db 0, 42, 63
-    db 42,  0, 42
+    db 0, 63, 63
+    db 63,  0, 63
     db 63, 63, 63
 
 ; --- EGA ATC shadow table (16 bytes, rebuilt on every adjustment) ---
@@ -162,7 +184,7 @@ cga_ega_default:
 
 ; 5 preset palettes + fallback (resident for hotkey switching)
 res_preset_fallback:
-    db 0,  0,  0,    0, 42, 63,   42,  0, 42,   63, 63, 63
+    db 0,  0,  0,    0, 63, 63,   63,  0, 63,   63, 63, 63
 res_preset_1:                       ; Arcade Vibrant
     db 0,  0,  0,    9, 27, 63,   63,  9,  9,   63, 45, 27
 res_preset_2:                       ; Sierra Natural
@@ -173,9 +195,107 @@ res_preset_4:                       ; CGA Red/Green/White
     db 0,  0,  0,   63,  9,  9,    9, 63,  9,   63, 63, 63
 res_preset_5:                       ; CGA Red/Blue/White
     db 0,  0,  0,   63,  0,  0,    0,  0, 63,   63, 63, 63
+res_preset_6:                       ; Amstrad CPC
+    db 0,  0,  0,    0, 42, 42,   42, 42,  0,   63, 63, 63
+res_preset_7:                       ; Pastel
+    db 0,  0,  0,   27, 36, 63,   63, 36, 45,   54, 54, 63
+res_preset_8:                       ; Monochrome Amber
+    db 0,  0,  0,   21, 14,  0,   42, 28,  0,   63, 42,  0
+res_preset_9:                       ; Monochrome Green
+    db 0,  0,  0,    0, 21,  0,    0, 42,  0,    0, 63,  0
 
 ; DAC table workspace for VGA (16 entries × 3 bytes = 48 bytes)
 dac_table:          times 48 db 0
+
+; Standard VGA text mode DAC (16 entries × 3 bytes = 48 bytes)
+; Used by restore_default_palette to reset to boot-time colors.
+default_text_dac:
+    db  0,  0,  0              ; 0  Black
+    db  0,  0, 42              ; 1  Blue
+    db  0, 42,  0              ; 2  Green
+    db  0, 42, 42              ; 3  Cyan
+    db 42,  0,  0              ; 4  Red
+    db 42,  0, 42              ; 5  Magenta
+    db 42, 21,  0              ; 6  Brown
+    db 42, 42, 42              ; 7  Light Gray
+    db 21, 21, 21              ; 8  Dark Gray
+    db 21, 21, 63              ; 9  Light Blue
+    db 21, 63, 21              ; 10 Light Green
+    db 21, 63, 63              ; 11 Light Cyan
+    db 63, 21, 21              ; 12 Light Red
+    db 63, 21, 63              ; 13 Light Magenta
+    db 63, 63, 21              ; 14 Yellow
+    db 63, 63, 63              ; 15 White
+
+; C64 palette (15 non-black, 6-bit VGA RGB)
+; Source: Lospec.com - Commodore 64 palette
+c64_colors:
+    db 63, 63, 63              ; White
+    db 39, 19, 17              ; Red
+    db 26, 47, 49              ; Cyan
+    db 40, 21, 40              ; Purple
+    db 23, 42, 23              ; Green
+    db 20, 17, 38              ; Blue
+    db 50, 52, 33              ; Yellow
+    db 40, 26, 15              ; Orange
+    db 27, 21,  4              ; Brown
+    db 50, 31, 29              ; Light Red
+    db 24, 24, 24              ; Dark Gray
+    db 34, 34, 34              ; Medium Gray
+    db 38, 56, 38              ; Light Green
+    db 34, 31, 50              ; Light Blue
+    db 43, 43, 43              ; Light Gray
+C64_COUNT           equ 15
+
+; Amstrad CPC hardware palette (26 non-black, 3 levels per channel)
+; Source: Lospec.com - Amstrad CPC palette
+cpc_colors:
+    db  0,  0, 31              ; Dark Blue
+    db  0,  0, 63              ; Bright Blue
+    db  0, 32,  0              ; Dark Green
+    db  0, 32, 32              ; Dark Cyan
+    db  0, 32, 63              ; Sky Blue
+    db  0, 63,  0              ; Bright Green
+    db  0, 63, 32              ; Sea Green
+    db  0, 63, 63              ; Bright Cyan
+    db 32,  0,  0              ; Dark Red
+    db 32,  0, 32              ; Dark Magenta
+    db 31,  0, 63              ; Mauve
+    db 32, 32,  0              ; Dark Yellow
+    db 32, 32, 32              ; Gray
+    db 32, 32, 63              ; Pastel Blue
+    db 32, 63,  0              ; Lime
+    db 32, 63, 32              ; Pastel Green
+    db 32, 63, 63              ; Pastel Cyan
+    db 63,  0,  0              ; Bright Red
+    db 63,  0, 32              ; Purple
+    db 63,  0, 63              ; Bright Magenta
+    db 63, 31,  0              ; Orange
+    db 63, 32, 32              ; Pastel Red
+    db 63, 32, 63              ; Pastel Magenta
+    db 63, 63,  0              ; Bright Yellow
+    db 63, 63, 32              ; Pastel Yellow
+    db 63, 63, 63              ; White
+CPC_COUNT           equ 26
+
+; ZX Spectrum palette (14 non-black: 7 normal + 7 bright)
+; Source: Lospec.com - ZX Spectrum palette
+zx_colors:
+    db  0,  0, 53              ; Blue
+    db 53,  0,  0              ; Red
+    db 53,  0, 53              ; Magenta
+    db  0, 53,  0              ; Green
+    db  0, 53, 53              ; Cyan
+    db 53, 53,  0              ; Yellow
+    db 53, 53, 53              ; White
+    db  0,  0, 63              ; Bright Blue
+    db 63,  0,  0              ; Bright Red
+    db 63,  0, 63              ; Bright Magenta
+    db  0, 63,  0              ; Bright Green
+    db  0, 63, 63              ; Bright Cyan
+    db 63, 63,  0              ; Bright Yellow
+    db 63, 63, 63              ; Bright White
+ZX_COUNT            equ 14
 
 ; EGA temporary workspace (4 bytes)
 ega_tmp:            times 4 db 0
@@ -198,11 +318,14 @@ tsr_int10:
     ; Let the original handler set the mode first
     pushf
     call far [cs:orig_int10_ofs]
-    ; Now re-apply our palette
+    ; Only re-apply if custom palette is active
+    cmp byte [cs:palette_active], 0
+    je .no_apply
     cmp byte [cs:video_type], 2
     je .do_vga
     cmp byte [cs:video_type], 1
     je .do_ega
+.no_apply:
     iret
 .do_vga:
     call apply_palette_vga
@@ -212,40 +335,40 @@ tsr_int10:
     iret
 
 ; ============================================================================
-; INT 09h HOOK — ScrollLock-gated hotkeys for live palette adjustment
+; INT 09h HOOK — Ctrl+Alt-gated hotkeys for live palette adjustment
 ; ============================================================================
 tsr_int09:
     push ax
+    push bp
     push ds
 
     ; Read scan code from keyboard controller
     in al, 0x60
 
-    ; If this IS the ScrollLock key itself, let the BIOS handle it
-    ; (so the LED toggles normally) — don't intercept
-    cmp al, 0x46               ; ScrollLock make code
-    je .chain_kb
-
     ; Check if it's a key release (bit 7 set) — ignore releases
     test al, 0x80
     jnz .chain_kb
 
-    ; Check ScrollLock state in BIOS keyboard flags
+    ; Check if both Ctrl and Alt are held (BIOS keyboard flags)
+    push ax
     mov ax, 0x0040
     mov ds, ax
-    test byte [0x0017], SCROLLLOCK_BIT
-    jz .chain_kb               ; ScrollLock off → pass through
+    mov al, [0x0017]
+    and al, CTRLALT_BITS
+    cmp al, CTRLALT_BITS
+    pop ax
+    jne .chain_kb              ; Ctrl+Alt not both held → pass through
 
-    ; ScrollLock is ON — check for our hotkeys
+    ; Ctrl+Alt held — check for our hotkeys
     mov ah, al                 ; save scan code in AH
 
-    ; Preset keys 1-5
+    ; Preset keys 1-9
     cmp ah, SCAN_1
     jb .check_special
-    cmp ah, SCAN_5
+    cmp ah, SCAN_9
     ja .check_special
-    ; AH = 02h..06h → preset 1..5
-    sub ah, SCAN_1             ; AH = 0..4 = preset index
+    ; AH = 02h..0Ah → preset 1..9
+    sub ah, SCAN_1             ; AH = 0..8 = preset index
     call hotkey_load_preset
     jmp .swallow
 
@@ -262,6 +385,14 @@ tsr_int09:
     je .do_vivid_up
     cmp ah, SCAN_LEFT
     je .do_vivid_dn
+    cmp ah, SCAN_SPACE
+    je .do_random
+    cmp ah, SCAN_C
+    je .do_random_c64
+    cmp ah, SCAN_A
+    je .do_random_cpc
+    cmp ah, SCAN_Z
+    je .do_random_zx
     jmp .chain_kb              ; not our key → pass through
 
 .do_pop:
@@ -303,6 +434,30 @@ tsr_int09:
     call recompute_and_apply
     jmp .swallow
 
+.do_random:
+    mov si, default_text_dac + 3
+    mov bp, 15
+    call hotkey_random
+    jmp .swallow
+
+.do_random_c64:
+    mov si, c64_colors
+    mov bp, C64_COUNT
+    call hotkey_random
+    jmp .swallow
+
+.do_random_cpc:
+    mov si, cpc_colors
+    mov bp, CPC_COUNT
+    call hotkey_random
+    jmp .swallow
+
+.do_random_zx:
+    mov si, zx_colors
+    mov bp, ZX_COUNT
+    call hotkey_random
+    jmp .swallow
+
 .swallow:
     ; Acknowledge keystroke: toggle port 61h bit 7 + send EOI to PIC
     in al, 0x61
@@ -313,11 +468,13 @@ tsr_int09:
     mov al, 0x20
     out 0x20, al
     pop ds
+    pop bp
     pop ax
     iret
 
 .chain_kb:
     pop ds
+    pop bp
     pop ax
     jmp far [cs:orig_int09_ofs]
 
@@ -368,6 +525,8 @@ hotkey_load_preset:
 
 ; ============================================================================
 ; hotkey_load_fallback — Reset to default CGA palette
+; In CGA mode 4/5: applies standard high-intensity CGA through our routing.
+; In text mode: restores full 16-color DAC/ATC and goes dormant.
 ; ============================================================================
 hotkey_load_fallback:
     push cx
@@ -396,6 +555,29 @@ hotkey_load_fallback:
     pop di
     pop si
     pop cx
+
+    ; Check current video mode to decide reset strategy
+    push ax
+    push ds
+    mov ax, 0x0040
+    mov ds, ax
+    mov al, [0x0049]           ; BIOS current video mode
+    pop ds
+    cmp al, 4
+    je .cga_mode_reset
+    cmp al, 5
+    je .cga_mode_reset
+
+    ; Text mode: full DAC/ATC restore, go dormant
+    mov byte [cs:palette_active], 0
+    pop ax
+    call restore_default_palette
+    ret
+
+.cga_mode_reset:
+    ; CGA mode: apply standard CGA through our routing
+    mov byte [cs:palette_active], 1
+    pop ax
     call recompute_and_apply
     ret
 
@@ -421,6 +603,8 @@ recompute_and_apply:
 
     push cs
     pop es
+
+    mov byte [cs:palette_active], 1
 
     ; Step 1: Copy base_palette → palette_rgb
     mov si, base_palette
@@ -576,6 +760,42 @@ apply_palette_vga:
     mov al, 0x20               ; Re-enable screen
     out dx, al
     sti
+
+    ; --- Step 3: Write colors to DAC entries used by text mode display ---
+    ; In text mode, attributes 11/13/15 route through ATC to DAC 59/61/63.
+    ; Write our custom colors there so the DOS color preview shows correctly.
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 59                 ; DAC 59 = text attr 11 (light cyan slot)
+    out dx, al
+    mov dx, VGA_DAC_DATA
+    mov al, [cs:palette_rgb+3] ; color 1 R
+    out dx, al
+    mov al, [cs:palette_rgb+4] ; color 1 G
+    out dx, al
+    mov al, [cs:palette_rgb+5] ; color 1 B
+    out dx, al
+
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 61                 ; DAC 61 = text attr 13 (light magenta slot)
+    out dx, al
+    mov dx, VGA_DAC_DATA
+    mov al, [cs:palette_rgb+6] ; color 2 R
+    out dx, al
+    mov al, [cs:palette_rgb+7] ; color 2 G
+    out dx, al
+    mov al, [cs:palette_rgb+8] ; color 2 B
+    out dx, al
+
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 63                 ; DAC 63 = text attr 15 (white slot)
+    out dx, al
+    mov dx, VGA_DAC_DATA
+    mov al, [cs:palette_rgb+9] ; color 3 R
+    out dx, al
+    mov al, [cs:palette_rgb+10]; color 3 G
+    out dx, al
+    mov al, [cs:palette_rgb+11]; color 3 B
+    out dx, al
 
     pop di
     pop si
@@ -859,6 +1079,205 @@ res_contrast_boost:
     ret
 
 ; ============================================================================
+; restore_default_palette — Write boot-time 16-color DAC + default ATC
+; Called by Ctrl+Alt+R hotkey and default install.
+; ============================================================================
+restore_default_palette:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    cmp byte [cs:video_type], 2
+    jne .restore_atc_only
+
+    ; Write 16 default DAC entries (VGA only)
+    mov dx, VGA_DAC_WRITE_IDX
+    xor al, al
+    out dx, al
+    mov si, default_text_dac
+    mov cx, 48
+    mov dx, VGA_DAC_DATA
+.write_dac:
+    mov al, [cs:si]
+    inc si
+    out dx, al
+    loop .write_dac
+
+    ; Restore text mode DAC 59/61/63 to standard values
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 59                 ; DAC 59 = Light Cyan (21,63,63)
+    out dx, al
+    mov dx, VGA_DAC_DATA
+    mov al, 21
+    out dx, al
+    mov al, 63
+    out dx, al
+    mov al, 63
+    out dx, al
+
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 61                 ; DAC 61 = Light Magenta (63,21,63)
+    out dx, al
+    mov dx, VGA_DAC_DATA
+    mov al, 63
+    out dx, al
+    mov al, 21
+    out dx, al
+    mov al, 63
+    out dx, al
+
+    mov dx, VGA_DAC_WRITE_IDX
+    mov al, 63                 ; DAC 63 = White (63,63,63)
+    out dx, al
+    mov dx, VGA_DAC_DATA
+    mov al, 63
+    out dx, al
+    mov al, 63
+    out dx, al
+    mov al, 63
+    out dx, al
+
+.restore_atc_only:
+    ; Restore default ATC[0-15] (both VGA and EGA)
+    cli
+    mov dx, INPUT_STATUS_1
+    in al, dx
+    xor bx, bx
+.write_atc:
+    mov dx, ATC_ADDR_DATA
+    mov al, bl
+    out dx, al
+    jmp short $+2
+    mov al, [cs:cga_ega_default + bx]
+    out dx, al
+    jmp short $+2
+    inc bx
+    cmp bx, 16
+    jb .write_atc
+    mov al, 0x20
+    out dx, al
+    sti
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; hotkey_random — Pick 3 unique random colors from a palette table
+; Input: SI = color table (N entries × 3 bytes), BP = color count
+; ============================================================================
+hotkey_random:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push bp
+    push ds
+
+    ; Save table pointer in DI
+    mov di, si
+
+    ; Seed from BIOS timer tick
+    mov ax, 0x0040
+    mov ds, ax
+    mov ax, [0x006C]
+    add [cs:rng_seed], ax
+
+    ; Pick color 1
+    mov bx, bp
+    call get_random_n
+    mov cl, dl                  ; CL = index1
+    mov si, di
+    add si, bx
+    mov al, [cs:si]
+    mov [cs:base_palette+3], al
+    mov al, [cs:si+1]
+    mov [cs:base_palette+4], al
+    mov al, [cs:si+2]
+    mov [cs:base_palette+5], al
+
+    ; Pick color 2 (must differ from color 1)
+.pick2:
+    mov bx, bp
+    call get_random_n
+    cmp dl, cl
+    je .pick2
+    mov ch, dl                  ; CH = index2
+    mov si, di
+    add si, bx
+    mov al, [cs:si]
+    mov [cs:base_palette+6], al
+    mov al, [cs:si+1]
+    mov [cs:base_palette+7], al
+    mov al, [cs:si+2]
+    mov [cs:base_palette+8], al
+
+    ; Pick color 3 (must differ from color 1 and 2)
+.pick3:
+    mov bx, bp
+    call get_random_n
+    cmp dl, cl
+    je .pick3
+    cmp dl, ch
+    je .pick3
+    mov si, di
+    add si, bx
+    mov al, [cs:si]
+    mov [cs:base_palette+9], al
+    mov al, [cs:si+1]
+    mov [cs:base_palette+10], al
+    mov al, [cs:si+2]
+    mov [cs:base_palette+11], al
+
+    ; Reset adjustments, activate palette
+    mov byte [cs:adj_brightness], 0
+    mov byte [cs:adj_vivid], 0
+    mov byte [cs:adj_pop], 0
+    mov byte [cs:palette_active], 1
+
+    pop ds
+    pop bp
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    call recompute_and_apply
+    ret
+
+; ============================================================================
+; get_random_n — Return random index into N-color table
+; Input: BX = color count (modulus N)
+; Output: BX = (0..N-1) * 3  (byte offset), DL = raw index (0..N-1)
+; Trashes: AX, DX
+; ============================================================================
+get_random_n:
+    push cx
+    mov cx, bx                  ; save count
+    mov ax, [cs:rng_seed]
+    mov bx, 25173
+    mul bx                      ; DX:AX = seed * 25173
+    add ax, 13849
+    mov [cs:rng_seed], ax       ; store new seed
+    xor dx, dx
+    mov bx, cx                  ; BX = count
+    div bx                      ; DX = remainder 0..N-1
+    mov bx, dx
+    mov ax, bx
+    shl bx, 1
+    add bx, ax                  ; BX = index * 3
+    pop cx
+    ret
+
+; ============================================================================
 ; End of resident section
 ; ============================================================================
 tsr_end:
@@ -908,6 +1327,14 @@ main:
     je .preset_4
     cmp al, 7
     je .preset_5
+    cmp al, 8
+    je .preset_6
+    cmp al, 9
+    je .preset_7
+    cmp al, 10
+    je .preset_8
+    cmp al, 11
+    je .preset_9
     jmp .load_file
 
 .no_adapter:
@@ -939,6 +1366,7 @@ main:
     call print_string
     ; Load fallback palette as base
     mov si, res_preset_fallback
+    mov byte [is_default_install], 1
     jmp .apply_preset
 
 .preset_1:
@@ -966,6 +1394,26 @@ main:
     call print_string
     mov si, res_preset_5
     jmp .apply_preset
+.preset_6:
+    mov dx, msg_preset6
+    call print_string
+    mov si, res_preset_6
+    jmp .apply_preset
+.preset_7:
+    mov dx, msg_preset7
+    call print_string
+    mov si, res_preset_7
+    jmp .apply_preset
+.preset_8:
+    mov dx, msg_preset8
+    call print_string
+    mov si, res_preset_8
+    jmp .apply_preset
+.preset_9:
+    mov dx, msg_preset9
+    call print_string
+    mov si, res_preset_9
+    jmp .apply_preset
 
 .apply_preset:
     ; Copy 12 bytes from preset to config_buffer
@@ -983,6 +1431,14 @@ main:
     jc .use_fallback
     call validate_palette
     jc .use_fallback
+
+    ; If file had multiple palettes, copy them over resident presets
+    cmp byte [palettes_loaded], 1
+    jbe .single_palette
+    call copy_file_palettes_to_presets
+    mov dx, msg_multi_loaded
+    call print_string
+.single_palette:
     call apply_bg_override
     call apply_fg_override
     call apply_adjustments
@@ -999,6 +1455,18 @@ main:
     call apply_bg_override
     call apply_fg_override
     call apply_adjustments
+    ; Default install if no customization flags set
+    cmp byte [bg_specified], 0
+    jne .do_install
+    cmp byte [fg_specified], 0
+    jne .do_install
+    cmp byte [pop_flag_cmd], 0
+    jne .do_install
+    cmp byte [brightness_adj_cmd], 0
+    jne .do_install
+    cmp byte [vivid_adj_cmd], 0
+    jne .do_install
+    mov byte [is_default_install], 1
 
 .do_install:
     ; Copy final config_buffer → base_palette AND palette_rgb
@@ -1018,26 +1486,37 @@ main:
     mov byte [adj_vivid], 0
     mov byte [adj_pop], 0
 
-    ; Print loaded colors
-    call print_colors
-
     ; Build EGA shadow if needed
     cmp byte [video_type], 1
     jne .skip_ega_init
     call res_build_ega_shadow
 .skip_ega_init:
 
-    ; Apply palette now (preview in text mode)
+    ; Check if this is a default install (no custom palette)
+    cmp byte [is_default_install], 0
+    jne .skip_hw_apply
+
+    ; Apply palette now (before printing preview so colors are visible)
+    mov byte [palette_active], 1
     cmp byte [video_type], 2
     je .apply_vga_now
     call apply_palette_ega
-    jmp .check_installed
+    jmp .palette_applied
 .apply_vga_now:
     ; On VGA, also disable BIOS palette reload (belt-and-suspenders with hook)
     mov ax, 0x1201
     mov bl, 0x31
     int 0x10
     call apply_palette_vga
+    jmp .palette_applied
+
+.skip_hw_apply:
+    ; Default install: don't touch hardware, let INT 10h hook handle it
+    mov byte [palette_active], 0
+
+.palette_applied:
+    ; Print loaded colors
+    call print_colors
 
 .check_installed:
     call check_already_loaded
@@ -1078,6 +1557,74 @@ main:
     int 0x21
 
 .already_loaded:
+    ; TSR is already resident — update its data via the resident segment.
+    ; Get resident segment from INT 10h vector (ES = resident code segment)
+    mov ax, 0x3510
+    int 0x21
+    ; ES now points to the resident TSR segment
+
+    ; Copy base_palette to resident
+    push ds
+    push cs
+    pop ds
+    mov si, base_palette
+    mov di, base_palette
+    mov cx, 12
+    cld
+    rep movsb
+
+    ; Copy palette_rgb to resident
+    mov si, palette_rgb
+    mov di, palette_rgb
+    mov cx, 12
+    cld
+    rep movsb
+
+    ; Copy adjustments to resident
+    mov al, [adj_brightness]
+    mov [es:adj_brightness], al
+    mov al, [adj_vivid]
+    mov [es:adj_vivid], al
+    mov al, [adj_pop]
+    mov [es:adj_pop], al
+    mov al, [palette_active]
+    mov [es:palette_active], al
+    pop ds
+
+    ; If multi-palette file was loaded, copy presets to resident
+    cmp byte [palettes_loaded], 1
+    jbe .no_preset_update
+    push ds
+    push cs
+    pop ds
+    mov si, res_preset_1
+    mov di, res_preset_1
+    mov al, [palettes_loaded]
+    xor ah, ah
+    mov cl, 12
+    mul cl
+    mov cx, ax
+    cld
+    rep movsb
+    pop ds
+.no_preset_update:
+
+    ; If default install (/R), restore built-in presets and text-mode hardware
+    cmp byte [is_default_install], 0
+    je .reload_done
+    ; Copy all 9 original built-in presets from transient → resident
+    push ds
+    push cs
+    pop ds
+    mov si, res_preset_1
+    mov di, res_preset_1
+    mov cx, 9 * 12             ; 9 presets × 12 bytes each
+    cld
+    rep movsb
+    pop ds
+    call restore_default_palette
+.reload_done:
+
     mov dx, msg_already_loaded
     call print_string
     jmp .exit_no_tsr
@@ -1230,7 +1777,21 @@ uninstall_tsr:
     mov dx, [es:orig_int09_ofs]
     int 0x21
 
-    ; Free TSR memory block (ES = segment)
+    ; Free TSR's environment block first (segment at PSP offset 2Ch)
+    ; ES still points to the TSR's PSP segment
+    push es
+    mov bx, es
+    dec bx                     ; MCB is 1 paragraph before PSP
+    mov ax, [es:0x2C]          ; environment segment from PSP
+    or ax, ax
+    jz .no_env
+    mov es, ax
+    mov ah, 0x49
+    int 0x21
+.no_env:
+    pop es
+
+    ; Free TSR memory block (ES = TSR PSP segment)
     mov ah, 0x49
     int 0x21
 
@@ -1363,6 +1924,14 @@ check_switches:
     je .is_preset4
     cmp al, '5'
     je .is_preset5
+    cmp al, '6'
+    je .is_preset6
+    cmp al, '7'
+    je .is_preset7
+    cmp al, '8'
+    je .is_preset8
+    cmp al, '9'
+    je .is_preset9
     jmp .bad_switch
 
 .skip_token:
@@ -1445,6 +2014,14 @@ check_switches:
 .is_preset4:  mov byte [switch_result], 6
     jmp .after_modifier
 .is_preset5:  mov byte [switch_result], 7
+    jmp .after_modifier
+.is_preset6:  mov byte [switch_result], 8
+    jmp .after_modifier
+.is_preset7:  mov byte [switch_result], 9
+    jmp .after_modifier
+.is_preset8:  mov byte [switch_result], 10
+    jmp .after_modifier
+.is_preset9:  mov byte [switch_result], 11
     jmp .after_modifier
 
 .bad_switch:
@@ -1978,6 +2555,8 @@ load_config:
 
 ; ============================================================================
 ; parse_text_palette — Parse RGB text into config_buffer
+; Parses up to 9 palettes (36 color lines). Sets [palettes_loaded] = 1..9.
+; Returns: CF=0 success (at least 1 palette), CF=1 error
 ; ============================================================================
 parse_text_palette:
     push ax
@@ -1990,10 +2569,10 @@ parse_text_palette:
     mov si, text_buffer
     mov di, config_buffer
     mov cx, [bytes_read]
-    xor bx, bx
+    xor bx, bx                 ; BL = total color lines parsed (0..36)
 
 .next_line:
-    cmp bl, 4
+    cmp bl, MAX_PALETTES * 4   ; 36 color lines max
     jae .parse_done
     or cx, cx
     jz .check_count
@@ -2045,9 +2624,15 @@ parse_text_palette:
 
 .check_count:
     cmp bl, 4
-    jb .parse_fail
+    jb .parse_fail             ; need at least 1 full palette
 
 .parse_done:
+    ; Calculate number of complete palettes parsed
+    mov al, bl
+    xor ah, ah
+    mov dl, 4
+    div dl                      ; AL = palettes (BL / 4)
+    mov [palettes_loaded], al
     clc
     jmp .parse_exit
 
@@ -2198,13 +2783,19 @@ get_filename:
     ret
 
 ; ============================================================================
-; validate_palette — Check all 12 bytes in config_buffer are 0-63
+; validate_palette — Check all loaded bytes in config_buffer are 0-63
+; Validates palettes_loaded × 12 bytes.
 ; ============================================================================
 validate_palette:
+    push ax
     push cx
     push si
+    mov al, [palettes_loaded]
+    xor ah, ah
+    mov cl, 12
+    mul cl                      ; AX = total bytes to check
+    mov cx, ax
     mov si, config_buffer
-    mov cx, CONFIG_SIZE
 .check_loop:
     lodsb
     cmp al, 64
@@ -2219,6 +2810,7 @@ validate_palette:
 .vp_done:
     pop si
     pop cx
+    pop ax
     ret
 
 ; ============================================================================
@@ -2233,9 +2825,42 @@ load_fallback_to_config:
     mov cx, CONFIG_SIZE
     cld
     rep movsb
+    mov byte [palettes_loaded], 1
     pop cx
     pop di
     pop si
+    ret
+
+; ============================================================================
+; copy_file_palettes_to_presets — Copy palettes 2+ from config_buffer to
+; resident presets. Palette 1 → res_preset_1, palette 2 → res_preset_2, etc.
+; Only copies as many as palettes_loaded (up to 9).
+; ============================================================================
+copy_file_palettes_to_presets:
+    push ax
+    push cx
+    push si
+    push di
+
+    mov al, [palettes_loaded]
+    xor ah, ah
+    or al, al
+    jz .cpy_done
+
+    ; Copy palette N from config_buffer + (N-1)*12 to res_preset_1 + (N-1)*12
+    mov si, config_buffer       ; palette 1 starts at offset 0
+    mov di, res_preset_1
+    mov cl, 12
+    mul cl                      ; AX = palettes_loaded × 12
+    mov cx, ax
+    cld
+    rep movsb
+
+.cpy_done:
+    pop di
+    pop si
+    pop cx
+    pop ax
     ret
 
 ; ============================================================================
@@ -2369,7 +2994,7 @@ print_string:
 ; ============================================================================
 
 msg_banner:
-    db 'PalSwapT v3.0 - CGA Palette TSR with Live Hotkeys', 13, 10
+    db 'PalSwapT v3.3 - CGA Palette TSR with Live Hotkeys', 13, 10
     db 'By Retro Erik - 2026 - Hooks INT 09h + INT 10h', 13, 10
     db 'Type: PALSWAPT /? for help', 13, 10, '$'
 
@@ -2382,13 +3007,13 @@ msg_no_adapter:
 
 msg_help:
     db 13, 10
-    db 'Usage: PALSWAPT [file.txt] [/1..5] [/c:c1,c2,c3] [/b:color]', 13, 10
+    db 'Usage: PALSWAPT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]', 13, 10
     db '                [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]', 13, 10
     db 13, 10
     db '  Installs as TSR. Hooks INT 10h (survives game mode resets)', 13, 10
-    db '  and INT 09h (live palette hotkeys via ScrollLock).', 13, 10
+    db '  and INT 09h (live palette hotkeys via Ctrl+Alt).', 13, 10
     db 13, 10
-    db '  file.txt       Load custom palette (default: PALSWAPT.TXT)', 13, 10
+    db '  file.txt       Load palette file (1-9 palettes, 4 lines each)', 13, 10
     db '  /c:c1,c2,c3    Set colors 1-3 by name (see list below)', 13, 10
     db '  /b:color        Set background color by name', 13, 10
     db '  /P              Pop - boost saturation + contrast', 13, 10
@@ -2406,22 +3031,28 @@ msg_help2:
     db 13, 10, 13, 10
     db 'Built-in presets:', 13, 10
     db '  /1  Arcade Vibrant   /2  Sierra Natural   /3  C64-inspired', 13, 10
-    db '  /4  CGA Red/Green    /5  CGA Red/Blue', 13, 10
+    db '  /4  CGA Red/Green    /5  CGA Red/Blue     /6  Amstrad CPC', 13, 10
+    db '  /7  Pastel           /8  Mono Amber       /9  Mono Green', 13, 10
     db 13, 10
-    db 'Live hotkeys (turn ScrollLock ON to activate):', 13, 10
-    db '  1..5       Switch preset instantly', 13, 10
+    db 'Live hotkeys (hold Ctrl+Alt and press):', 13, 10
+    db '  1..9       Switch preset instantly', 13, 10
     db '  P          Toggle Pop (saturation + contrast)', 13, 10
     db '  R          Reset to default CGA palette', 13, 10
     db '  Up/Down    Brighten / Dim', 13, 10
     db '  Left/Right Less / More vivid (saturation)', 13, 10
-    db '  ScrollLock OFF = normal keyboard, hotkeys disabled', 13, 10
+    db '  Space    Random from CGA 16 colors', 13, 10
+    db '  C        Random from C64 palette', 13, 10
+    db '  A        Random from Amstrad CPC palette', 13, 10
+    db '  Z        Random from ZX Spectrum palette', 13, 10
+    db '  Release Ctrl+Alt = normal keyboard', 13, 10
     db 13, 10
     db 'Color names for /c: and /b:', 13, 10
     db '  black, blue, green, cyan, red, magenta, brown, lightgray,', 13, 10
     db '  darkgray, lightblue, lightgreen, lightcyan, lightred,', 13, 10
     db '  lightmagenta, yellow, white', 13, 10
     db 13, 10
-    db 'Text file: R,G,B per line (0-63). Compatible with PC1PAL.TXT', 13, 10
+    db 'Text file: R,G,B per line (0-63). Up to 9 palettes (4 lines', 13, 10
+    db 'each). Multi-palette files overwrite presets 1-9.', 13, 10
     db '$'
 
 msg_preset1:     db 'Preset: Arcade Vibrant', 13, 10, '$'
@@ -2429,14 +3060,19 @@ msg_preset2:     db 'Preset: Sierra Natural', 13, 10, '$'
 msg_preset3:     db 'Preset: C64-inspired', 13, 10, '$'
 msg_preset4:     db 'Preset: CGA Red/Green/White', 13, 10, '$'
 msg_preset5:     db 'Preset: CGA Red/Blue/White', 13, 10, '$'
+msg_preset6:     db 'Preset: Amstrad CPC', 13, 10, '$'
+msg_preset7:     db 'Preset: Pastel', 13, 10, '$'
+msg_preset8:     db 'Preset: Monochrome Amber', 13, 10, '$'
+msg_preset9:     db 'Preset: Monochrome Green', 13, 10, '$'
 msg_resetting:   db 'Using default CGA palette.', 13, 10, '$'
+msg_multi_loaded:
+    db 'Multi-palette file: presets 1-9 overwritten.', 13, 10, '$'
 msg_installed:
     db 'TSR installed. INT 09h + INT 10h hooked.', 13, 10
-    db 'ScrollLock ON = hotkeys active (1-5/P/R/arrows).', 13, 10
+    db 'Ctrl+Alt + key = hotkeys (1-9/P/R/arrows/Space/C/A/Z).', 13, 10
     db 'Run your CGA game now. Use PALSWAPT /U to uninstall.', 13, 10, '$'
 msg_already_loaded:
-    db 'PalSwapT already installed.', 13, 10
-    db 'Use PALSWAPT /U to uninstall first.', 13, 10, '$'
+    db 'PalSwapT already resident - palette updated.', 13, 10, '$'
 msg_unloaded:
     db 'PalSwapT uninstalled. INT 09h + INT 10h restored.', 13, 10, '$'
 msg_unload_error:
@@ -2486,6 +3122,8 @@ brightness_adj_cmd: db 0        ; 0=none, 1=brighten, 2=dim
 vivid_adj_cmd:      db 0        ; 0=none, 1=boost, 2=mute
 pop_flag_cmd:       db 0        ; 1=apply pop from command line
 switch_result:      db 0
+is_default_install: db 0
+palettes_loaded:    db 1            ; number of palettes parsed from file (1-9)
 bg_specified:       db 0
 bg_color:           db 0, 0, 0
 fg_specified:       db 0
@@ -2495,7 +3133,7 @@ file_handle:        dw 0
 bytes_read:         dw 0
 
 filename_buffer:    times 128 db 0
-config_buffer:      times CONFIG_SIZE db 0
+config_buffer:      times MULTI_CONFIG_SIZE db 0
 text_buffer:        times TEXT_BUF_SIZE db 0
 
 ; ============================================================================
