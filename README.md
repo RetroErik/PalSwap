@@ -1,8 +1,14 @@
 # PalSwap — CGA Palette Override for EGA and VGA cards
 
-**PalSwapT v3.3** — By Retro Erik, 2026
-
 A DOS TSR (Terminate and Stay Resident) utility that lets you run CGA games with completely custom 4-colour palettes on any EGA or VGA card. It hooks INT 10h to survive game mode resets and INT 09h for live palette hotkeys via Ctrl+Alt.
+
+By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
+
+![EGA/VGA](https://img.shields.io/badge/Platform-EGA%20%2F%20VGA-blue)
+![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
+
+### 📥 [Download PalSwapT.COM — TSR version with hotkey support](PalSwapT.COM)
+### 📥 [Download palswap.com — one-shot palette changer](palswap.com)
 
 Compatible with the palette text file format used by **PC1PAL** (Olivetti PC1 palette loader) — the same `.TXT` files work on both tools.
 
