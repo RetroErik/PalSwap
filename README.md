@@ -264,3 +264,10 @@ Requires NASM. Produces plain DOS `.COM` files.
 ## Relation to PC1PAL
 
 [PC1PAL](../PC1-Palette-Loader/) does the same job for the **Olivetti PC1**, which uses a Yamaha V6355D video chip with its own palette ports (0DDh/0DEh) and 3-bit colour channels. PalSwap targets standard **EGA/VGA** cards using the standard VGA DAC and EGA ATC hardware instead. The palette text file format is identical between both tools.
+
+---
+
+## YouTube
+
+For more retro computing content, visit my YouTube channel **Retro Hardware and Software**:
+[https://www.youtube.com/@RetroErik](https://www.youtube.com/@RetroErik)
