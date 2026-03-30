@@ -4,8 +4,9 @@ A DOS TSR (Terminate and Stay Resident) utility that lets you run CGA games with
 
 By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
 
-![EGA/VGA](https://img.shields.io/badge/Platform-EGA%20%2F%20VGA-blue)
+![Olivetti Prodest PC1](https://img.shields.io/badge/Platform-Olivetti%20Prodest%20PC1-blue)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
+![EGA/VGA](https://img.shields.io/badge/Platform-EGA%20%2F%20VGA-blue)
 
 ### ▶️ [Watch the PalSwapT video on YouTube](https://youtu.be/c2lrBGcd43Q)
 ### ▶️ [Watch the PalSwap video on YouTube](https://youtu.be/M94z11cK5FQ)
