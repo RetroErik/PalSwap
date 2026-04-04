@@ -11,8 +11,7 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 ### ▶️ [Watch the PalSwapT video on YouTube](https://youtu.be/c2lrBGcd43Q)
 ### ▶️ [Watch the PalSwap video on YouTube](https://youtu.be/M94z11cK5FQ)
 
-### 📥 [Download PalSwapT.COM — TSR version with hotkey support](PalSwapT.COM)
-### 📥 [Download palswap.com — one-shot palette changer](palswap.com)
+### 📥 [Download PALSwap.zip — includes both COM files, and palette files](PALSwap.zip)
 
 Compatible with the palette text file format used by **PC1PAL** (Olivetti PC1 palette loader) — the same `.TXT` files work on both tools.
 
@@ -26,7 +25,10 @@ CGA games are limited to fixed 4-colour palettes (cyan/magenta/white or red/gree
 
 ## The Solution
 
-PalSwapT installs as a TSR and reprograms the VGA DAC or EGA ATC registers to map CGA pixel values to your custom colours. It hooks INT 10h so the palette is re-applied every time a game sets CGA mode 4/5, and hooks INT 09h so you can change palettes on the fly while a game is running.
+PalSwapT installs as a TSR and reprograms the palette registers to map CGA pixel values to your custom colours. It hooks INT 10h so the palette is re-applied every time a game sets CGA mode 4/5, and hooks INT 09h so you can change palettes on the fly while a game is running.
+
+- **On VGA:** Programs the DAC with full 18-bit RGB colour (262,144 colours available).
+- **On EGA:** Programs the ATC registers with 6-bit RGB (64 colours available on the card), though real EGA monitors may limit this to 16 colours in CGA-compatible 200-line modes depending on monitor sync-frequency decoding. PalSwap still provides custom palette remapping within the monitor's constraints.
 
 ---
 
@@ -218,6 +220,21 @@ Each file contains 9 curated palettes designed for different game genres (action
 1. Converts each user RGB (0–63) to the nearest EGA 6-bit colour value.
 2. Builds a full 16-register ATC table, overriding all CGA-active entries.
 3. Programs all 16 ATC registers via port 3C0h.
+
+### EGA Hardware Monitor Considerations
+
+**Important distinction:** On real EGA hardware (e.g., IBM 5154 monitor), the monitor itself plays a critical role in colour interpretation:
+
+- The **EGA card outputs 6 bits** (RrGgBb) for the ATC colours in all modes, giving access to 64 distinct colours in theory.
+- However, **standard EGA monitors physically switch decoding modes based on sync frequency**: in 200-line CGA-compatible modes (70.86 Hz), the IBM 5154 switches from 6-bit interpretation to 4-bit RGBI (Red, Green, Blue, Intensity binary signals), even though the EGA card is still outputting all 6 bits.
+- This limitation is **hardware-side on the monitor itself**, not the card — the card cannot force the monitor to interpret 6-bit values if the monitor's pin decoding is sync-frequency-dependent.
+- **Practical impact:** On a real IBM 5154 in CGA mode 4 you are limited to 16 displayed colours (the 16-colour RGBI set), not 64. However, PalSwap still provides significant value: you can remap those 4 CGA colour slots **to any of the 16 RGBI colours instead of the fixed CGA palette sets** (cyan/magenta/white OR red/green/yellow).
+
+**Multi-frequency monitors and hardware switches:**
+- Some multi-frequency monitors (e.g., NEC MultiSync) may interpret the 6 inputs identically across all sync frequencies, potentially allowing 64-colour access in 200-line modes. This has not been tested on actual hardware.
+- Some games (e.g., *Ivan 'Ironman' Stewart's Super Off Road*, *Rambo 3*) supported hardware switch modes that allowed users to manually override this monitor behaviour on specific systems.
+
+**Bottom line:** PalSwap's primary target is **VGA systems**, where the full 262,144-colour DAC is available with no monitor-side restrictions. On real EGA hardware, PalSwap provides a practical improvement within the 16-colour RGBI constraint rather than full 64-colour freedom.
 
 ### CGA Mode 4 DAC Routing
 
