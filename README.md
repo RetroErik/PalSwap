@@ -1,8 +1,7 @@
-# PalSwap — CGA Palette Override for EGA and VGA cards
+# PalSwap & CGASwap — CGA Palette Override for EGA, VGA, and CGA cards
 
-A DOS TSR (Terminate and Stay Resident) utility that lets you run CGA games with completely custom 4-colour palettes on any EGA or VGA card. It hooks INT 10h to survive game mode resets and INT 09h for live palette hotkeys via Ctrl+Alt.
+A pair of DOS TSR (Terminate and Stay Resident) utilities that let you run CGA games with completely custom 4-colour palettes. **PalSwapT** targets EGA and VGA cards, reprogramming the DAC/ATC registers for up to 262,144 colours. **CGASwap** targets real CGA cards, overriding the built-in palette combinations via direct hardware register writes. Both hook INT 10h to survive game mode resets and INT 09h for live palette hotkeys via Ctrl+Alt.
 
-Also includes **CGASwap** — a companion TSR for **real CGA cards** that overrides the built-in CGA palette combinations (see below).
 
 By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
 
