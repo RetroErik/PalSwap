@@ -10,10 +10,11 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 ![CGA/EGA/VGA](https://img.shields.io/badge/Platform-CGA%20%2F%20EGA%20%2F%20VGA-blue)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
 
+### ▶️ [Watch the CGASwap & PalSwap 3.5 video on YouTube](https://youtu.be/su9mawA1brc)
 ### ▶️ [Watch the PalSwapT video on YouTube](https://youtu.be/c2lrBGcd43Q)
 ### ▶️ [Watch the PalSwap video on YouTube](https://youtu.be/M94z11cK5FQ)
 
-### 📥 [Download PALSwap.zip — includes both COM files, and palette files](PALSwap.zip)
+### 📥 [Download PALSwap.zip — includes PalSwapT, PalSwap, CGASwap, and palette files](PALSwap.zip)
 
 Compatible with the palette text file format used by **PC1PAL** (Olivetti PC1 palette loader) — the same `.TXT` files work on both tools.
 
@@ -214,6 +215,8 @@ Each file contains 9 curated palettes designed for different game genres (action
 ---
 
 ## CGASwap — CGA Palette Override for Real CGA Cards
+
+![CGASwap Zaxxon demo](Screenshots/CGASwap-Zaxxon.gif)
 
 A companion TSR for systems with a **real CGA card** (IBM 5153 or compatible). Unlike PalSwapT, which requires EGA or VGA, CGASwap works by directly programming the CGA hardware registers (ports 3D8h and 3D9h).
 
