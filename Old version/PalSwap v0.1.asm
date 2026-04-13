@@ -3,7 +3,7 @@
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
 ; Based on PC1PAL.ASM (Olivetti PC1 / Yamaha V6355D version)
-; Version 1.0
+; Version 0.1
 ; ============================================================================
 ; Sets custom RGB palette entries before running a CGA game on an EGA or VGA
 ; card. The palette persists until the game (or any other program) issues a

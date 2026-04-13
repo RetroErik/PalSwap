@@ -2,10 +2,12 @@
 
 A DOS TSR (Terminate and Stay Resident) utility that lets you run CGA games with completely custom 4-colour palettes on any EGA or VGA card. It hooks INT 10h to survive game mode resets and INT 09h for live palette hotkeys via Ctrl+Alt.
 
+Also includes **CGASwap** — a companion TSR for **real CGA cards** that overrides the built-in CGA palette combinations (see below).
+
 By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube.com/@RetroErik)
 
 ![IBM PC / Compatible](https://img.shields.io/badge/Platform-IBM%20PC%20%2F%20Compatible-blue)
-![EGA/VGA](https://img.shields.io/badge/Platform-EGA%20%2F%20VGA-blue)
+![CGA/EGA/VGA](https://img.shields.io/badge/Platform-CGA%20%2F%20EGA%20%2F%20VGA-blue)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-green)
 
 ### ▶️ [Watch the PalSwapT video on YouTube](https://youtu.be/c2lrBGcd43Q)
@@ -16,6 +18,18 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 Compatible with the palette text file format used by **PC1PAL** (Olivetti PC1 palette loader) — the same `.TXT` files work on both tools.
 
 Also includes **PalSwap** (non-TSR version) for one-shot palette changes.
+
+---
+
+## PalSwap (Non-TSR Version)
+
+A simpler one-shot tool that sets the palette and exits immediately — no TSR, no hotkeys.
+
+```
+PALSWAP [file.txt] [/1..9] [/0] [/c:c1,c2,c3] [/b:color] [/P] [/V:+|-] [/D:+|-] [/R] [/?]
+```
+
+All 10 built-in presets (`/1`–`/9`, `/0`) are identical to PalSwapT. Supports the same palette file format, colour names, and adjustment switches (`/P`, `/V`, `/D`). Does not stay resident — the palette persists until the next video mode set.
 
 ---
 
@@ -43,7 +57,7 @@ PalSwapT installs as a TSR and reprograms the palette registers to map CGA pixel
 ## Usage
 
 ```
-PALSWAPT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color] [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
+PALSWAPT [file.txt] [/1..9] [/0] [/c:c1,c2,c3] [/b:color] [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ```
 
 | Switch         | Effect |
@@ -59,6 +73,7 @@ PALSWAPT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color] [/P] [/V:+|-] [/D:+|-] [/R]
 | `/7`           | Preset: Pastel |
 | `/8`           | Preset: Monochrome Amber |
 | `/9`           | Preset: Monochrome Green |
+| `/0`           | Preset: Monochrome Gray |
 | `/c:c1,c2,c3`  | Set colours 1, 2, 3 by name (see colour list below) |
 | `/b:color`     | Set background colour by name |
 | `/P`           | Pop — boost saturation + contrast |
@@ -78,7 +93,7 @@ While the TSR is installed, hold **Ctrl+Alt** and press:
 
 | Key | Action |
 |-----|--------|
-| `1`..`9` | Switch to preset 1–9 instantly |
+| `1`..`9`, `0` | Switch to preset 1–9 or 0 instantly |
 | `P` | Toggle Pop (saturation + contrast boost) |
 | `R` | Reset to default CGA palette (high-intensity cyan/magenta/white) |
 | `Up` / `Down` | Brighten / Dim (±8 per step, max 3 steps) |
@@ -198,6 +213,78 @@ Each file contains 9 curated palettes designed for different game genres (action
 
 ---
 
+## CGASwap — CGA Palette Override for Real CGA Cards
+
+A companion TSR for systems with a **real CGA card** (IBM 5153 or compatible). Unlike PalSwapT, which requires EGA or VGA, CGASwap works by directly programming the CGA hardware registers (ports 3D8h and 3D9h).
+
+CGA has no palette indirection — the hardware provides 6 fixed foreground palette combinations plus a selectable background colour. CGASwap forces your chosen combination and fights to keep it applied when games try to set their own.
+
+### Usage
+
+```
+CGASWAP [/1..6] [/b:color] [/T] [/U] [/?]
+```
+
+| Switch     | Effect |
+|------------|--------|
+| `/1`       | Palette 1, High intensity: Light Cyan, Light Magenta, White |
+| `/2`       | Palette 1, Low intensity: Cyan, Magenta, Light Gray |
+| `/3`       | Palette 0, High intensity: Light Green, Light Red, Yellow |
+| `/4`       | Palette 0, Low intensity: Green, Red, Brown |
+| `/5`       | Mode 5, High intensity: Light Cyan, Light Red, White |
+| `/6`       | Mode 5, Low intensity: Cyan, Red, Light Gray |
+| `/b:color` | Set background (0–15 or name, e.g. `/b:blue`) |
+| `/T`       | Disable timer enforcement (default: timer ON) |
+| `/U`       | Uninstall TSR |
+| `/?`       | Show help |
+
+### Live Hotkeys
+
+**Ctrl+Alt + 1..6** — Switch palette combination on the fly.
+
+The hotkeys work through two mechanisms:
+- **INT 09h hook**: Instant response when the game chains to the original keyboard handler.
+- **INT 08h polling fallback**: Tracks Ctrl/Alt state from port 60h scan codes (~18× per second). Works even when games replace INT 09h without chaining.
+
+### Timer Enforcement (Default: ON)
+
+By default, CGASwap re-applies the palette every timer tick (~18.2 Hz) while in CGA mode 4/5. This handles games that write directly to port 3D9h, bypassing INT 10h. Text mode is never disturbed.
+
+Use `/T` to **disable** the timer if it causes issues with a specific game. Hotkey polling in INT 08h remains active even with `/T`.
+
+Games that continuously write to 3D9h in their main loop will outpace the 18 Hz timer. For those, set the palette before launching the game.
+
+### How It Works
+
+1. **INT 10h hook**: Intercepts mode set (AH=00h) — lets the BIOS set the mode, then re-applies palette to ports 3D8h/3D9h. Also intercepts palette set (AH=0Bh) — overrides with our settings. Tracks mode 4/5 vs. other modes for safe timer operation.
+2. **INT 09h hook**: Watches for Ctrl+Alt + 1-6 via BIOS keyboard flags (0040:0017h). Swallows the keystroke and applies the preset immediately.
+3. **INT 08h hook**: Polls port 60h to self-track Ctrl/Alt modifier state (independent of BIOS flags). Detects hotkeys even when games replace INT 09h. By default, also reapplies palette every tick (~18.2 Hz). `/T` disables the palette enforcement but keeps hotkey polling active.
+
+### Game Compatibility (Tested on Real CGA Hardware)
+
+| Game | Palette | Hotkeys | Notes |
+|------|---------|---------|-------|
+| Montezuma's Revenge | ✅ Works | ✅ Works | |
+| Ms. Pac-Man | ✅ Works | ✅ Works | |
+| International Karate (IK) | ✅ Works | ✅ Works | Sound OK |
+| Bruce Lee | ✅ Works | ✅ Works | Sound OK |
+| Popcorn | ✅ Works | ✅ Works | Sound OK |
+| Last Ninja | ✅ Works | ✅ Works | |
+| Monkey Island (CGA) | ✅ Works | ✅ Works | |
+| Galaxian | ✅ Works | ✅ Works | |
+| Rick Dangerous | ✅ Title screen | ⚠️ Title only | Game replaces INT 08h+09h during gameplay |
+| Fallen Angel | ⚠️ Set before launch | ⚠️ Title only | Writes 3D9h directly; replaces INT 08h+09h in-game |
+
+**Tip:** For games marked "Set before launch", run `CGASWAP /3` (or your preferred preset) before starting the game. The palette applies at mode set and persists until the game overrides it.
+
+### Building
+
+```dos
+nasm -f bin -o CGASwap.com "Asm Source/CGASwap.asm"
+```
+
+---
+
 ## How It Works (Technical)
 
 ### TSR Architecture
@@ -210,10 +297,12 @@ Each file contains 9 curated palettes designed for different game genres (action
 
 ### VGA Path (video_type = 2)
 
-1. Calls `INT 10h AX=1201h BL=31h` to disable default palette loading on mode set.
-2. Programs ATC[0–3] = 0, 1, 8, 9 (conflict-free DAC routing — entries 8, 9 are never used by any standard CGA palette variant).
-3. Writes all 16 DAC entries (0–15) with the correct user colour for every CGA palette variant.
-4. Also writes DAC entries 59, 61, 63 so that DOS text mode shows a colour preview using text attributes 11, 13, 15.
+1. Writes all 16 DAC entries (0–15) using the `color_to_dac[]` mapping table, so every CGA palette variant (palette 0/1, low/high intensity, mode 4/5) gets the user's custom colours.
+2. Programs ATC[0–15] using `vga_atc_init[]` for conflict-free routing — ATC[0–3] = 0, 1, 8, 9 ensures both low and high intensity CGA pixel values map through our controlled DAC entries. ATC[4–15] retain standard text mode values.
+3. Writes custom colours to DAC 59/61/63 so text mode attributes 11/13/15 (light cyan, light magenta, white) display a preview of the current palette colours in DOS.
+4. No BIOS palette reload disable (1201h/31h) — the INT 10h hook re-applies after every mode 4/5 set, and the BIOS reloads default DAC/ATC on mode 3, keeping text mode completely clean after exiting a game.
+
+> **Note:** The non-TSR version (PalSwap) also programs ATC and DAC, and additionally calls `INT 10h AX=1201h BL=31h` to disable BIOS palette reload, since it has no hook to re-apply after a mode set.
 
 ### EGA Path (video_type = 1)
 
@@ -266,6 +355,7 @@ Colour tables in resident memory (sourced from [Lospec.com](https://lospec.com/p
 ```dos
 nasm -f bin -o PalSwapT.COM "Asm Source/PalSwapT.asm"
 nasm -f bin -o palswap.com "Asm Source/PalSwap.asm"
+nasm -f bin -o CGASwap.com "Asm Source/CGASwap.asm"
 ```
 
 Requires NASM. Produces plain DOS `.COM` files.
@@ -276,10 +366,12 @@ Requires NASM. Produces plain DOS `.COM` files.
 
 | File | Description |
 |------|-------------|
-| `Asm Source/PalSwapT.asm` | TSR version — NASM source (main tool) |
-| `Asm Source/PalSwap.asm`  | Non-TSR version — one-shot palette setter |
+| `Asm Source/PalSwapT.asm` | TSR version — NASM source (main tool, EGA/VGA) |
+| `Asm Source/PalSwap.asm`  | Non-TSR version — one-shot palette setter (EGA/VGA) |
+| `Asm Source/CGASwap.asm`  | CGA TSR version — palette override for real CGA cards |
 | `PalSwapT.COM` | Assembled TSR binary, ready to run |
 | `palswap.com`  | Assembled non-TSR binary |
+| `CGASwap.com`  | Assembled CGA TSR binary |
 | `C64.TXT`      | 9 mini-palettes using Commodore 64 colours (Lospec) |
 | `ZX.TXT`       | 9 mini-palettes using ZX Spectrum colours (Lospec) |
 | `CPC.TXT`      | 9 mini-palettes using Amstrad CPC colours (Lospec) |

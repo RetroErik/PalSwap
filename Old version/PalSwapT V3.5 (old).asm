@@ -2,7 +2,7 @@
 ; PalSwapT.ASM - CGA Palette Override TSR with Live Hotkeys
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 3.5 - TSR with Ctrl+Alt hotkeys
+; Version 3.5 - Removed ATC reprogramming from VGA path
 ; ============================================================================
 ;
 ; Combines the full palette engine of PalSwap.asm with a TSR that hooks
@@ -14,8 +14,7 @@
 ;
 ; HOTKEY SYSTEM:
 ;   Hold Ctrl+Alt and press a hotkey to adjust the palette:
-;     1..9         Load preset 1-9
-;     0            Load preset 0 (Monochrome Gray)
+;     0..9         Load preset 1-9
 ;     P            Toggle Pop (saturation + contrast boost)
 ;     R            Reset to default CGA palette (high-intensity)
 ;     Up / Down    Brighten / Dim (+/-8 per step, max 3 steps)
@@ -30,10 +29,9 @@
 ;     /1  Arcade Vibrant     /2  Sierra Natural     /3  C64-inspired
 ;     /4  CGA Red/Green      /5  CGA Red/Blue       /6  Amstrad CPC
 ;     /7  Pastel             /8  Mono Amber          /9  Mono Green
-;     /0  Mono Gray
 ;
 ; HOW IT WORKS:
-;   1. You run PalSwapT [/0..9 | file.txt | /c:... | /b:...] before the game.
+;   1. You run PalSwapT [/1..9 | file.txt | /c:... | /b:...] before the game.
 ;   2. PalSwapT loads the palette, hooks INT 09h + INT 10h, stays resident.
 ;   3. When the game calls INT 10h AH=00h AL=04h/05h (set CGA mode 4/5):
 ;        a. The original INT 10h handler runs first (sets the hardware mode).
@@ -43,10 +41,11 @@
 ;   6. Run "PalSwapT /U" to uninstall.
 ;
 ; VGA path:
-;   Table-driven DAC write using color_to_dac[] for conflict-free routing.
-;   ATC[0-3] = 0, 1, 8, 9  — avoids DAC entry conflicts between CGA palette
-;   variants.  No BIOS palette disable — the INT 10h hook re-applies after
-;   every mode set, and BIOS cleanly restores text mode on its own.
+;   Table-driven DAC write using color_to_dac[] mapping.  Programs all 16
+;   DAC entries so every CGA palette variant (pal0/pal1 × low/high) gets
+;   the user's custom colors.  No ATC reprogramming, no BIOS palette disable
+;   (1201h/31h) — the INT 10h hook re-applies after every mode 4/5 set,
+;   and the BIOS reloads default DAC/ATC on mode 3, keeping text mode clean.
 ;
 ; EGA path:
 ;   Converts RGB to nearest EGA 6-bit values. Builds 16-entry atc_shadow[]
@@ -72,7 +71,7 @@
 ;   Computed at runtime as  (offset_of_tsr_end + 15) / 16  paragraphs.
 ;   ORG 0x100 means label offsets already include the 256-byte PSP.
 ;
-; Usage: PalSwapT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]
+; Usage: PalSwapT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]
 ;                 [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ;
 ; ============================================================================
@@ -177,8 +176,9 @@ color_to_dac:
     db 0, 1, 1, 1, 2, 2, 3, 3, 2, 3, 1, 1, 2, 2, 3, 3
 
 ; ATC[0-3] = 0,1,8,9 (conflict-free), ATC[4-15] = standard text values
-vga_atc_init:
-    db 0, 1, 8, 9, 4, 5, 0x14, 7, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
+; (Kept for reference — no longer written to hardware in VGA mode)
+; vga_atc_init:
+;     db 0, 1, 8, 9, 4, 5, 0x14, 7, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
 
 ; Default EGA ATC register values for the 16 CGA colors
 cga_ega_default:
@@ -341,14 +341,9 @@ tsr_int10:
 
 ; ============================================================================
 ; INT 09h HOOK — Ctrl+Alt-gated hotkeys for live palette adjustment
-; SI must be saved: random hotkey paths clobber SI with the color table
-; pointer before calling hotkey_random. Without saving SI, the interrupted
-; program (e.g. COMMAND.COM) gets a corrupted SI on iret, causing the DOS
-; prompt to stop accepting input and occasional reboots.
 ; ============================================================================
 tsr_int09:
     push ax
-    push si
     push bp
     push ds
 
@@ -469,10 +464,9 @@ tsr_int09:
     jmp .swallow
 
 .swallow:
-    ; Acknowledge keystroke: toggle port 61h bit 7 to clear the keyboard
-    ; controller latch (required on XT-class machines), then send EOI.
-    in  al, 0x61
-    or  al, 0x80
+    ; Acknowledge keystroke: toggle port 61h bit 7 + send EOI to PIC
+    in al, 0x61
+    or al, 0x80
     out 0x61, al
     and al, 0x7F
     out 0x61, al
@@ -480,19 +474,18 @@ tsr_int09:
     out 0x20, al
     pop ds
     pop bp
-    pop si
     pop ax
     iret
 
 .chain_kb:
     pop ds
     pop bp
-    pop si
     pop ax
     jmp far [cs:orig_int09_ofs]
 
 ; ============================================================================
-; hotkey_load_preset — Load preset by index (AH = 0..4)
+; hotkey_load_preset — Load preset by index (AH = 0..9)
+; AH 0..8 = presets 1..9, AH 9 = preset 0 (Mono Gray).
 ; Resets adjustments and recomputes.
 ; ============================================================================
 hotkey_load_preset:
@@ -706,8 +699,10 @@ recompute_and_apply:
     ret
 
 ; ============================================================================
-; apply_palette_vga — Table-driven VGA DAC write + ATC programming
+; apply_palette_vga — Table-driven VGA DAC write
 ; Reads from palette_rgb[], uses color_to_dac[] for mapping.
+; Programs all 16 DAC entries so every CGA palette variant works.
+; No ATC reprogramming — BIOS ATC routes correctly to our DAC entries.
 ; All addresses via CS: since this runs from the TSR.
 ; ============================================================================
 apply_palette_vga:
@@ -752,64 +747,6 @@ apply_palette_vga:
     out dx, al
     loop .write_dac
 
-    ; Program ATC[0-15] for conflict-free routing
-    cli
-    mov dx, INPUT_STATUS_1
-    in al, dx                  ; Reset ATC flip-flop
-
-    xor bx, bx
-.write_atc:
-    mov dx, ATC_ADDR_DATA
-    mov al, bl
-    out dx, al
-    jmp short $+2
-    mov al, [cs:vga_atc_init + bx]
-    out dx, al
-    jmp short $+2
-    inc bx
-    cmp bx, 16
-    jb .write_atc
-
-    mov al, 0x20               ; Re-enable screen
-    out dx, al
-    sti
-
-    ; --- Step 3: Write colors to DAC entries used by text mode display ---
-    ; In text mode, attributes 11/13/15 route through ATC to DAC 59/61/63.
-    ; Write our custom colors there so the DOS color preview shows correctly.
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 59                 ; DAC 59 = text attr 11 (light cyan slot)
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+3] ; color 1 R
-    out dx, al
-    mov al, [cs:palette_rgb+4] ; color 1 G
-    out dx, al
-    mov al, [cs:palette_rgb+5] ; color 1 B
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 61                 ; DAC 61 = text attr 13 (light magenta slot)
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+6] ; color 2 R
-    out dx, al
-    mov al, [cs:palette_rgb+7] ; color 2 G
-    out dx, al
-    mov al, [cs:palette_rgb+8] ; color 2 B
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 63                 ; DAC 63 = text attr 15 (white slot)
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, [cs:palette_rgb+9] ; color 3 R
-    out dx, al
-    mov al, [cs:palette_rgb+10]; color 3 G
-    out dx, al
-    mov al, [cs:palette_rgb+11]; color 3 B
-    out dx, al
-
     pop di
     pop si
     pop dx
@@ -819,41 +756,9 @@ apply_palette_vga:
     ret
 
 ; ============================================================================
-; apply_palette_ega — Write 16-entry atc_shadow[] to EGA ATC ports
-; ============================================================================
-apply_palette_ega:
-    push ax
-    push bx
-    push dx
-
-    cli
-    mov dx, INPUT_STATUS_1
-    in al, dx
-
-    xor bx, bx
-.ega_loop:
-    mov dx, ATC_ADDR_DATA
-    mov al, bl
-    out dx, al
-    jmp short $+2
-    mov al, [cs:atc_shadow + bx]
-    out dx, al
-    jmp short $+2
-    inc bx
-    cmp bx, 16
-    jb .ega_loop
-
-    mov al, 0x20
-    out dx, al
-    sti
-
-    pop dx
-    pop bx
-    pop ax
-    ret
-
-; ============================================================================
-; res_build_ega_shadow — Convert palette_rgb to EGA values, fill atc_shadow
+; res_build_ega_shadow — Convert palette_rgb to EGA ATC shadow table
+; Copies cga_ega_default to atc_shadow, then converts 4 RGB colors to
+; nearest EGA 6-bit values and places them at all CGA mode 4 positions.
 ; ============================================================================
 res_build_ega_shadow:
     push ax
@@ -862,7 +767,7 @@ res_build_ega_shadow:
     push si
     push di
 
-    ; Start with CGA defaults
+    ; Copy 16 ATC defaults to shadow
     mov si, cga_ega_default
     mov di, atc_shadow
     mov cx, 16
@@ -941,6 +846,40 @@ res_build_ega_shadow:
     pop di
     pop si
     pop cx
+    pop bx
+    pop ax
+    ret
+
+; ============================================================================
+; apply_palette_ega — Write atc_shadow[0-15] to ATC registers
+; ============================================================================
+apply_palette_ega:
+    push ax
+    push bx
+    push dx
+
+    cli
+    mov dx, INPUT_STATUS_1
+    in al, dx                  ; Reset ATC flip-flop
+
+    xor bx, bx
+.write_atc:
+    mov dx, ATC_ADDR_DATA
+    mov al, bl
+    out dx, al
+    jmp short $+2
+    mov al, [cs:atc_shadow + bx]
+    out dx, al
+    jmp short $+2
+    inc bx
+    cmp bx, 16
+    jb .write_atc
+
+    mov al, 0x20               ; Re-enable screen
+    out dx, al
+    sti
+
+    pop dx
     pop bx
     pop ax
     ret
@@ -1094,6 +1033,8 @@ res_contrast_boost:
 ; ============================================================================
 ; restore_default_palette — Write boot-time 16-color DAC + default ATC
 ; Called by Ctrl+Alt+R hotkey and default install.
+; VGA: writes 16 default DAC entries (no ATC touch — BIOS handles it).
+; EGA: restores default ATC[0-15].
 ; ============================================================================
 restore_default_palette:
     push ax
@@ -1118,42 +1059,10 @@ restore_default_palette:
     out dx, al
     loop .write_dac
 
-    ; Restore text mode DAC 59/61/63 to standard values
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 59                 ; DAC 59 = Light Cyan (21,63,63)
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, 21
-    out dx, al
-    mov al, 63
-    out dx, al
-    mov al, 63
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 61                 ; DAC 61 = Light Magenta (63,21,63)
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, 63
-    out dx, al
-    mov al, 21
-    out dx, al
-    mov al, 63
-    out dx, al
-
-    mov dx, VGA_DAC_WRITE_IDX
-    mov al, 63                 ; DAC 63 = White (63,63,63)
-    out dx, al
-    mov dx, VGA_DAC_DATA
-    mov al, 63
-    out dx, al
-    mov al, 63
-    out dx, al
-    mov al, 63
-    out dx, al
+    jmp .done
 
 .restore_atc_only:
-    ; Restore default ATC[0-15] (both VGA and EGA)
+    ; Restore default ATC[0-15] (EGA only)
     cli
     mov dx, INPUT_STATUS_1
     in al, dx
@@ -1173,6 +1082,7 @@ restore_default_palette:
     out dx, al
     sti
 
+.done:
     pop si
     pop dx
     pop cx
@@ -1328,29 +1238,35 @@ main:
     jne .exit_no_tsr
     cmp al, 1
     je .show_help
+    ; AL=2..12: preset/reset dispatch via data tables
     cmp al, 2
-    je .do_reset_install
-    cmp al, 3
-    je .preset_1
-    cmp al, 4
-    je .preset_2
-    cmp al, 5
-    je .preset_3
-    cmp al, 6
-    je .preset_4
-    cmp al, 7
-    je .preset_5
-    cmp al, 8
-    je .preset_6
-    cmp al, 9
-    je .preset_7
-    cmp al, 10
-    je .preset_8
-    cmp al, 11
-    je .preset_9
+    jb .load_file
     cmp al, 12
-    je .preset_0
-    jmp .load_file
+    ja .load_file
+    push bx
+    sub al, 2                  ; AL = 0..10 (index into tables)
+    xor ah, ah
+    shl ax, 1                  ; AX = index × 2 (word offset)
+    mov bx, ax
+    mov dx, [.msg_table + bx]
+    call print_string
+    mov si, [.preset_table + bx]
+    pop bx
+    ; /R (index 0) sets default install flag
+    cmp si, res_preset_fallback
+    jne .apply_preset
+    mov byte [is_default_install], 1
+    jmp .apply_preset
+
+.msg_table:
+    dw msg_resetting, msg_preset1, msg_preset2, msg_preset3, msg_preset4
+    dw msg_preset5, msg_preset6, msg_preset7, msg_preset8, msg_preset9
+    dw msg_preset0
+
+.preset_table:
+    dw res_preset_fallback, res_preset_1, res_preset_2, res_preset_3
+    dw res_preset_4, res_preset_5, res_preset_6, res_preset_7
+    dw res_preset_8, res_preset_9, res_preset_0
 
 .no_adapter:
     mov dx, msg_no_adapter
@@ -1375,65 +1291,6 @@ main:
     mov dx, msg_help2
     call print_string
     jmp .exit_no_tsr
-
-.do_reset_install:
-    mov dx, msg_resetting
-    call print_string
-    ; Load fallback palette as base
-    mov si, res_preset_fallback
-    mov byte [is_default_install], 1
-    jmp .apply_preset
-
-.preset_1:
-    mov dx, msg_preset1
-    call print_string
-    mov si, res_preset_1
-    jmp .apply_preset
-.preset_2:
-    mov dx, msg_preset2
-    call print_string
-    mov si, res_preset_2
-    jmp .apply_preset
-.preset_3:
-    mov dx, msg_preset3
-    call print_string
-    mov si, res_preset_3
-    jmp .apply_preset
-.preset_4:
-    mov dx, msg_preset4
-    call print_string
-    mov si, res_preset_4
-    jmp .apply_preset
-.preset_5:
-    mov dx, msg_preset5
-    call print_string
-    mov si, res_preset_5
-    jmp .apply_preset
-.preset_6:
-    mov dx, msg_preset6
-    call print_string
-    mov si, res_preset_6
-    jmp .apply_preset
-.preset_7:
-    mov dx, msg_preset7
-    call print_string
-    mov si, res_preset_7
-    jmp .apply_preset
-.preset_8:
-    mov dx, msg_preset8
-    call print_string
-    mov si, res_preset_8
-    jmp .apply_preset
-.preset_9:
-    mov dx, msg_preset9
-    call print_string
-    mov si, res_preset_9
-    jmp .apply_preset
-.preset_0:
-    mov dx, msg_preset0
-    call print_string
-    mov si, res_preset_0
-    jmp .apply_preset
 
 .apply_preset:
     ; Copy 12 bytes from preset to config_buffer
@@ -1523,6 +1380,9 @@ main:
     call apply_palette_ega
     jmp .palette_applied
 .apply_vga_now:
+    ; No 1201h/31h call — the INT 10h hook re-applies the palette after
+    ; every mode 4/5 set, so the BIOS disable flag is redundant. Letting
+    ; the BIOS reload default DAC on mode 3 keeps text mode clean.
     call apply_palette_vga
     jmp .palette_applied
 
@@ -1617,10 +1477,9 @@ main:
     mov di, res_preset_1
     mov al, [palettes_loaded]
     xor ah, ah
-    mov cl, 12
+    mov cl, 6
     mul cl
     mov cx, ax
-    shr cx, 1
     cld
     rep movsw
     pop ds
@@ -1629,13 +1488,13 @@ main:
     ; If default install (/R), restore built-in presets and text-mode hardware
     cmp byte [is_default_install], 0
     je .reload_done
-    ; Copy all 10 original built-in presets from transient → resident
+    ; Copy all 9 original built-in presets from transient → resident
     push ds
     push cs
     pop ds
     mov si, res_preset_1
     mov di, res_preset_1
-    mov cx, 10 * 6             ; 10 presets × 6 words each
+    mov cx, 9 * 6              ; 9 presets × 6 words each
     cld
     rep movsw
     pop ds
@@ -2863,10 +2722,9 @@ copy_file_palettes_to_presets:
     ; Copy palette N from config_buffer + (N-1)*12 to res_preset_1 + (N-1)*12
     mov si, config_buffer       ; palette 1 starts at offset 0
     mov di, res_preset_1
-    mov cl, 12
-    mul cl                      ; AX = palettes_loaded × 12
+    mov cl, 6
+    mul cl                      ; AX = palettes_loaded × 6
     mov cx, ax
-    shr cx, 1
     cld
     rep movsw
 
@@ -3021,7 +2879,7 @@ msg_no_adapter:
 
 msg_help:
     db 13, 10
-    db 'Usage: PALSWAPT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]', 13, 10
+    db 'Usage: PALSWAPT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]', 13, 10
     db '                [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]', 13, 10
     db 13, 10
     db '  Installs as TSR. Hooks INT 10h (survives game mode resets)', 13, 10
@@ -3042,12 +2900,11 @@ msg_pause:
     db 13, 10, '--- Press any key for more ---', '$'
 
 msg_help2:
-    db 13, 10, 13, 10
+    db 13, 10
     db 'Built-in presets:', 13, 10
     db '  /1  Arcade Vibrant   /2  Sierra Natural   /3  C64-inspired', 13, 10
     db '  /4  CGA Red/Green    /5  CGA Red/Blue     /6  Amstrad CPC', 13, 10
-    db '  /7  Pastel           /8  Mono Amber       /9  Mono Green', 13, 10
-    db '  /0  Mono Gray', 13, 10
+    db '  /7  Pastel   /8  Mono Amber   /9  Mono Green   /0  Mono Gray', 13, 10
     db 13, 10
     db 'Live hotkeys (hold Ctrl+Alt and press):', 13, 10
     db '  0..9       Switch preset instantly', 13, 10

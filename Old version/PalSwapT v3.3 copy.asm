@@ -2,20 +2,19 @@
 ; PalSwapT.ASM - CGA Palette Override TSR with Live Hotkeys
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
-; Version 3.5 - TSR with Ctrl+Alt hotkeys
+; Version 3.3 - TSR with Ctrl+Alt hotkeys
 ; ============================================================================
 ;
 ; Combines the full palette engine of PalSwap.asm with a TSR that hooks
 ; both INT 10h (video mode change) and INT 09h (keyboard) so you can:
 ;   - Survive CGA mode resets (palette re-applied after every mode 4/5 set)
-;   - Switch presets LIVE while a game is running (Ctrl+Alt + 0..9)
+;   - Switch presets LIVE while a game is running (Ctrl+Alt + 1..9)
 ;   - Adjust brightness, saturation, pop on the fly (Ctrl+Alt + arrows/P/R)
 ;   - Generate random palettes from CGA/C64/Amstrad CPC/ZX Spectrum colors
 ;
 ; HOTKEY SYSTEM:
 ;   Hold Ctrl+Alt and press a hotkey to adjust the palette:
 ;     1..9         Load preset 1-9
-;     0            Load preset 0 (Monochrome Gray)
 ;     P            Toggle Pop (saturation + contrast boost)
 ;     R            Reset to default CGA palette (high-intensity)
 ;     Up / Down    Brighten / Dim (+/-8 per step, max 3 steps)
@@ -30,10 +29,9 @@
 ;     /1  Arcade Vibrant     /2  Sierra Natural     /3  C64-inspired
 ;     /4  CGA Red/Green      /5  CGA Red/Blue       /6  Amstrad CPC
 ;     /7  Pastel             /8  Mono Amber          /9  Mono Green
-;     /0  Mono Gray
 ;
 ; HOW IT WORKS:
-;   1. You run PalSwapT [/0..9 | file.txt | /c:... | /b:...] before the game.
+;   1. You run PalSwapT [/1..9 | file.txt | /c:... | /b:...] before the game.
 ;   2. PalSwapT loads the palette, hooks INT 09h + INT 10h, stays resident.
 ;   3. When the game calls INT 10h AH=00h AL=04h/05h (set CGA mode 4/5):
 ;        a. The original INT 10h handler runs first (sets the hardware mode).
@@ -45,8 +43,8 @@
 ; VGA path:
 ;   Table-driven DAC write using color_to_dac[] for conflict-free routing.
 ;   ATC[0-3] = 0, 1, 8, 9  — avoids DAC entry conflicts between CGA palette
-;   variants.  No BIOS palette disable — the INT 10h hook re-applies after
-;   every mode set, and BIOS cleanly restores text mode on its own.
+;   variants.  Also calls INT 10h AX=1201h BL=31h to disable BIOS palette
+;   reload.  Belt-and-suspenders: disable flag + hook re-apply.
 ;
 ; EGA path:
 ;   Converts RGB to nearest EGA 6-bit values. Builds 16-entry atc_shadow[]
@@ -72,7 +70,7 @@
 ;   Computed at runtime as  (offset_of_tsr_end + 15) / 16  paragraphs.
 ;   ORG 0x100 means label offsets already include the 256-byte PSP.
 ;
-; Usage: PalSwapT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]
+; Usage: PalSwapT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]
 ;                 [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]
 ;
 ; ============================================================================
@@ -99,7 +97,6 @@ TEXT_BUF_SIZE       equ 1024
 SCAN_1              equ 0x02
 SCAN_5              equ 0x06
 SCAN_9              equ 0x0A
-SCAN_0              equ 0x0B
 SCAN_P              equ 0x19
 SCAN_R              equ 0x13
 SCAN_UP             equ 0x48
@@ -206,8 +203,6 @@ res_preset_8:                       ; Monochrome Amber
     db 0,  0,  0,   21, 14,  0,   42, 28,  0,   63, 42,  0
 res_preset_9:                       ; Monochrome Green
     db 0,  0,  0,    0, 21,  0,    0, 42,  0,    0, 63,  0
-res_preset_0:                       ; Monochrome Gray
-    db 0,  0,  0,   21, 21, 21,   36, 36, 36,   63, 63, 63
 
 ; DAC table workspace for VGA (16 entries × 3 bytes = 48 bytes)
 dac_table:          times 48 db 0
@@ -341,14 +336,9 @@ tsr_int10:
 
 ; ============================================================================
 ; INT 09h HOOK — Ctrl+Alt-gated hotkeys for live palette adjustment
-; SI must be saved: random hotkey paths clobber SI with the color table
-; pointer before calling hotkey_random. Without saving SI, the interrupted
-; program (e.g. COMMAND.COM) gets a corrupted SI on iret, causing the DOS
-; prompt to stop accepting input and occasional reboots.
 ; ============================================================================
 tsr_int09:
     push ax
-    push si
     push bp
     push ds
 
@@ -372,13 +362,13 @@ tsr_int09:
     ; Ctrl+Alt held — check for our hotkeys
     mov ah, al                 ; save scan code in AH
 
-    ; Preset keys 1-9, 0
+    ; Preset keys 1-9
     cmp ah, SCAN_1
     jb .check_special
-    cmp ah, SCAN_0
+    cmp ah, SCAN_9
     ja .check_special
-    ; AH = 02h..0Bh → preset 1..9, 0
-    sub ah, SCAN_1             ; AH = 0..9 = preset index
+    ; AH = 02h..0Ah → preset 1..9
+    sub ah, SCAN_1             ; AH = 0..8 = preset index
     call hotkey_load_preset
     jmp .swallow
 
@@ -469,10 +459,9 @@ tsr_int09:
     jmp .swallow
 
 .swallow:
-    ; Acknowledge keystroke: toggle port 61h bit 7 to clear the keyboard
-    ; controller latch (required on XT-class machines), then send EOI.
-    in  al, 0x61
-    or  al, 0x80
+    ; Acknowledge keystroke: toggle port 61h bit 7 + send EOI to PIC
+    in al, 0x61
+    or al, 0x80
     out 0x61, al
     and al, 0x7F
     out 0x61, al
@@ -480,14 +469,12 @@ tsr_int09:
     out 0x20, al
     pop ds
     pop bp
-    pop si
     pop ax
     iret
 
 .chain_kb:
     pop ds
     pop bp
-    pop si
     pop ax
     jmp far [cs:orig_int09_ofs]
 
@@ -1348,8 +1335,6 @@ main:
     je .preset_8
     cmp al, 11
     je .preset_9
-    cmp al, 12
-    je .preset_0
     jmp .load_file
 
 .no_adapter:
@@ -1429,18 +1414,13 @@ main:
     call print_string
     mov si, res_preset_9
     jmp .apply_preset
-.preset_0:
-    mov dx, msg_preset0
-    call print_string
-    mov si, res_preset_0
-    jmp .apply_preset
 
 .apply_preset:
     ; Copy 12 bytes from preset to config_buffer
     mov di, config_buffer
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
     call apply_bg_override
     call apply_fg_override
     call apply_adjustments
@@ -1492,14 +1472,14 @@ main:
     ; Copy final config_buffer → base_palette AND palette_rgb
     mov si, config_buffer
     mov di, base_palette
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
     mov si, config_buffer
     mov di, palette_rgb
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Reset adjustment state
     mov byte [adj_brightness], 0
@@ -1523,6 +1503,10 @@ main:
     call apply_palette_ega
     jmp .palette_applied
 .apply_vga_now:
+    ; On VGA, also disable BIOS palette reload (belt-and-suspenders with hook)
+    mov ax, 0x1201
+    mov bl, 0x31
+    int 0x10
     call apply_palette_vga
     jmp .palette_applied
 
@@ -1585,16 +1569,16 @@ main:
     pop ds
     mov si, base_palette
     mov di, base_palette
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Copy palette_rgb to resident
     mov si, palette_rgb
     mov di, palette_rgb
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
 
     ; Copy adjustments to resident
     mov al, [adj_brightness]
@@ -1620,24 +1604,23 @@ main:
     mov cl, 12
     mul cl
     mov cx, ax
-    shr cx, 1
     cld
-    rep movsw
+    rep movsb
     pop ds
 .no_preset_update:
 
     ; If default install (/R), restore built-in presets and text-mode hardware
     cmp byte [is_default_install], 0
     je .reload_done
-    ; Copy all 10 original built-in presets from transient → resident
+    ; Copy all 9 original built-in presets from transient → resident
     push ds
     push cs
     pop ds
     mov si, res_preset_1
     mov di, res_preset_1
-    mov cx, 10 * 6             ; 10 presets × 6 words each
+    mov cx, 9 * 12             ; 9 presets × 12 bytes each
     cld
-    rep movsw
+    rep movsb
     pop ds
     call restore_default_palette
 .reload_done:
@@ -1815,6 +1798,14 @@ uninstall_tsr:
     push cs
     pop ds                     ; ensure DS = CS for print_string
 
+    ; On VGA, re-enable default palette loading
+    cmp byte [video_type], 2
+    jne .skip_reenable
+    mov ax, 0x1200             ; AL=00 = enable palette reload
+    mov bl, 0x31
+    int 0x10
+.skip_reenable:
+
     mov dx, msg_unloaded
     jmp .ui_msg
 
@@ -1941,8 +1932,6 @@ check_switches:
     je .is_preset8
     cmp al, '9'
     je .is_preset9
-    cmp al, '0'
-    je .is_preset0
     jmp .bad_switch
 
 .skip_token:
@@ -2033,8 +2022,6 @@ check_switches:
 .is_preset8:  mov byte [switch_result], 10
     jmp .after_modifier
 .is_preset9:  mov byte [switch_result], 11
-    jmp .after_modifier
-.is_preset0:  mov byte [switch_result], 12
     jmp .after_modifier
 
 .bad_switch:
@@ -2835,9 +2822,9 @@ load_fallback_to_config:
     push cx
     mov si, res_preset_fallback
     mov di, config_buffer
-    mov cx, CONFIG_SIZE / 2
+    mov cx, CONFIG_SIZE
     cld
-    rep movsw
+    rep movsb
     mov byte [palettes_loaded], 1
     pop cx
     pop di
@@ -2866,9 +2853,8 @@ copy_file_palettes_to_presets:
     mov cl, 12
     mul cl                      ; AX = palettes_loaded × 12
     mov cx, ax
-    shr cx, 1
     cld
-    rep movsw
+    rep movsb
 
 .cpy_done:
     pop di
@@ -3008,7 +2994,7 @@ print_string:
 ; ============================================================================
 
 msg_banner:
-    db 'PalSwapT v3.5 - CGA Palette TSR with Live Hotkeys', 13, 10
+    db 'PalSwapT v3.3 - CGA Palette TSR with Live Hotkeys', 13, 10
     db 'By Retro Erik - 2026 - Hooks INT 09h + INT 10h', 13, 10
     db 'Type: PALSWAPT /? for help', 13, 10, '$'
 
@@ -3021,7 +3007,7 @@ msg_no_adapter:
 
 msg_help:
     db 13, 10
-    db 'Usage: PALSWAPT [file.txt] [/0..9] [/c:c1,c2,c3] [/b:color]', 13, 10
+    db 'Usage: PALSWAPT [file.txt] [/1..9] [/c:c1,c2,c3] [/b:color]', 13, 10
     db '                [/P] [/V:+|-] [/D:+|-] [/R] [/U] [/?]', 13, 10
     db 13, 10
     db '  Installs as TSR. Hooks INT 10h (survives game mode resets)', 13, 10
@@ -3047,10 +3033,9 @@ msg_help2:
     db '  /1  Arcade Vibrant   /2  Sierra Natural   /3  C64-inspired', 13, 10
     db '  /4  CGA Red/Green    /5  CGA Red/Blue     /6  Amstrad CPC', 13, 10
     db '  /7  Pastel           /8  Mono Amber       /9  Mono Green', 13, 10
-    db '  /0  Mono Gray', 13, 10
     db 13, 10
     db 'Live hotkeys (hold Ctrl+Alt and press):', 13, 10
-    db '  0..9       Switch preset instantly', 13, 10
+    db '  1..9       Switch preset instantly', 13, 10
     db '  P          Toggle Pop (saturation + contrast)', 13, 10
     db '  R          Reset to default CGA palette', 13, 10
     db '  Up/Down    Brighten / Dim', 13, 10
@@ -3079,13 +3064,12 @@ msg_preset6:     db 'Preset: Amstrad CPC', 13, 10, '$'
 msg_preset7:     db 'Preset: Pastel', 13, 10, '$'
 msg_preset8:     db 'Preset: Monochrome Amber', 13, 10, '$'
 msg_preset9:     db 'Preset: Monochrome Green', 13, 10, '$'
-msg_preset0:     db 'Preset: Monochrome Gray', 13, 10, '$'
 msg_resetting:   db 'Using default CGA palette.', 13, 10, '$'
 msg_multi_loaded:
     db 'Multi-palette file: presets 1-9 overwritten.', 13, 10, '$'
 msg_installed:
     db 'TSR installed. INT 09h + INT 10h hooked.', 13, 10
-    db 'Ctrl+Alt + key = hotkeys (0-9/P/R/arrows/Space/C/A/Z).', 13, 10
+    db 'Ctrl+Alt + key = hotkeys (1-9/P/R/arrows/Space/C/A/Z).', 13, 10
     db 'Run your CGA game now. Use PALSWAPT /U to uninstall.', 13, 10, '$'
 msg_already_loaded:
     db 'PalSwapT already resident - palette updated.', 13, 10, '$'

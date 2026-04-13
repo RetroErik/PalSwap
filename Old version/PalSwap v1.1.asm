@@ -3,7 +3,7 @@
 ; Written for NASM - 8086 compatible (runs on any DOS PC)
 ; By Retro Erik - 2026 using VS Code with GitHub Copilot
 ; Idea is from PC1PAL.ASM (Olivetti PC1 / Yamaha V6355D version)
-; Version 1.2 - Adds presets
+; Version 1.1
 ; ============================================================================
 ; Sets custom RGB palette entries before running a CGA game on an EGA or VGA
 ; card.
@@ -31,7 +31,7 @@
 ; We write user colors to ALL these positions (both palettes, both intensities)
 ; so the palette works regardless of which CGA mode the game sets.
 ;
-; Usage: PalSwap [palette.txt] [/1..9] [/0] [/c:c1,c2,c3] [/b:color] [/P] [/V:+|-] [/D:+|-] [/R] [/?]
+; Usage: PalSwap [palette.txt] [/1..5] [/c:c1,c2,c3] [/b:color] [/P] [/V:+|-] [/D:+|-] [/R] [/?]
 ;
 ; Switches:
 ;   /1          Preset: Arcade Vibrant (action games)
@@ -39,11 +39,6 @@
 ;   /3          Preset: C64-inspired (retro warm feel)
 ;   /4          Preset: CGA Red/Green/White
 ;   /5          Preset: CGA Red/Blue/White
-;   /6          Preset: Amstrad CPC
-;   /7          Preset: Pastel
-;   /8          Preset: Monochrome Amber
-;   /9          Preset: Monochrome Green
-;   /0          Preset: Monochrome Gray
 ;   /c:c1,c2,c3 Set colors 1,2,3 by name (e.g. /c:blue,red,white)
 ;   /b:color    Set background to any of the 16 CGA colors (e.g. /b:yellow)
 ;   /P          Pop - boost saturation and contrast for more vivid colors
@@ -131,30 +126,18 @@ main:
     je .show_help
     cmp al, 2
     je .do_reset
-    ; AL=3..12: preset dispatch via data tables
     cmp al, 3
-    jb .load_palette
-    cmp al, 12
-    ja .load_palette
-    push bx
-    sub al, 3                  ; AL = 0..9 (index into tables)
-    xor ah, ah
-    shl ax, 1                  ; AX = index × 2 (word offset)
-    mov bx, ax
-    mov dx, [.msg_table + bx]
-    call print_string
-    mov si, [.preset_table + bx]
-    pop bx
-    jmp .apply_preset
+    je .preset_1
+    cmp al, 4
+    je .preset_2
+    cmp al, 5
+    je .preset_3
+    cmp al, 6
+    je .preset_4
+    cmp al, 7
+    je .preset_5
 
-.msg_table:
-    dw msg_preset1, msg_preset2, msg_preset3, msg_preset4, msg_preset5
-    dw msg_preset6, msg_preset7, msg_preset8, msg_preset9, msg_preset0
-
-.preset_table:
-    dw preset_arcade, preset_sierra, preset_c64, preset_cga_text
-    dw preset_cga_palette, preset_amstrad, preset_pastel, preset_amber
-    dw preset_green, preset_gray
+    jmp .load_palette
 
 .no_adapter:
     mov dx, msg_no_adapter
@@ -201,12 +184,42 @@ main:
     call print_string
     jmp .exit
 
+.preset_1:
+    mov dx, msg_preset1
+    call print_string
+    mov si, preset_arcade
+    jmp .apply_preset
+
+.preset_2:
+    mov dx, msg_preset2
+    call print_string
+    mov si, preset_sierra
+    jmp .apply_preset
+
+.preset_3:
+    mov dx, msg_preset3
+    call print_string
+    mov si, preset_c64
+    jmp .apply_preset
+
+.preset_4:
+    mov dx, msg_preset4
+    call print_string
+    mov si, preset_cga_text
+    jmp .apply_preset
+
+.preset_5:
+    mov dx, msg_preset5
+    call print_string
+    mov si, preset_cga_palette
+    jmp .apply_preset
+
 .apply_preset:
     ; Copy 12 bytes from preset to config_buffer
     mov di, config_buffer
-    mov cx, 6
+    mov cx, 12
     cld
-    rep movsw
+    rep movsb
     call apply_bg_override
     call apply_fg_override
     call apply_adjustments
@@ -1066,16 +1079,6 @@ check_switches:
     je .is_preset4
     cmp al, '5'
     je .is_preset5
-    cmp al, '6'
-    je .is_preset6
-    cmp al, '7'
-    je .is_preset7
-    cmp al, '8'
-    je .is_preset8
-    cmp al, '9'
-    je .is_preset9
-    cmp al, '0'
-    je .is_preset0
     jmp .bad_switch
 
 .skip_bg_switch:
@@ -1156,16 +1159,6 @@ check_switches:
 .is_preset4:  mov byte [switch_result], 6
     jmp .after_modifier
 .is_preset5:  mov byte [switch_result], 7
-    jmp .after_modifier
-.is_preset6:  mov byte [switch_result], 8
-    jmp .after_modifier
-.is_preset7:  mov byte [switch_result], 9
-    jmp .after_modifier
-.is_preset8:  mov byte [switch_result], 10
-    jmp .after_modifier
-.is_preset9:  mov byte [switch_result], 11
-    jmp .after_modifier
-.is_preset0:  mov byte [switch_result], 12
     jmp .after_modifier
 .bad_switch:
     mov dx, msg_bad_switch
@@ -1861,7 +1854,7 @@ adjust_contrast_boost:
 ; ============================================================================
 
 msg_banner:
-    db 'PalSwap v1.2 - CGA Palette Override for EGA/VGA', 13, 10
+    db 'PalSwap v1.1 - CGA Palette Override for EGA/VGA', 13, 10
     db 'By Retro Erik - 2026 - EGA ATC / VGA DAC Programmer', 13, 10
     db 'Type: PALSWAP /? for help', 13, 10, '$'
 
@@ -1876,7 +1869,7 @@ msg_no_adapter:
 
 msg_help:
     db 13, 10
-    db 'Usage: PALSWAP [file.txt] [/1..9] [/0] [/c:c1,c2,c3] [/b:color]', 13, 10
+    db 'Usage: PALSWAP [file.txt] [/1..5] [/c:c1,c2,c3] [/b:color]', 13, 10
     db '               [/P] [/V:+|-] [/D:+|-] [/R] [/?]', 13, 10
     db 13, 10
     db '  file.txt       Load palette from text file (default: PALSWAP.TXT)', 13, 10
@@ -1896,11 +1889,12 @@ msg_pause:
 msg_help2:
     db 13, 10
     db 13, 10
-    db 'Built-in presets:', 13, 10
-    db '  /1  Arcade Vibrant     /2  Sierra Natural     /3  C64-inspired', 13, 10
-    db '  /4  CGA Red/Green      /5  CGA Red/Blue       /6  Amstrad CPC', 13, 10
-    db '  /7  Pastel             /8  Mono Amber          /9  Mono Green', 13, 10
-    db '  /0  Mono Gray', 13, 10
+    db 'Built-in presets (RGB values 0-63):', 13, 10
+    db '  /1  Arcade Vibrant - Black, Blue(9,27,63), Red(63,9,9), Skin(63,45,27)', 13, 10
+    db '  /2  Sierra Natural - Black, Teal(9,36,36), Brown(36,18,9), Skin(63,45,36)', 13, 10
+    db '  /3  C64-inspired   - Black, Blue(18,27,63), Orange(54,27,9), Skin(63,54,36)', 13, 10
+    db '  /4  CGA Red/Green  - Black, Red(63,9,9), Green(9,63,9), White(63,63,63)', 13, 10
+    db '  /5  CGA Red/Blue   - Black, Red(63,0,0), Blue(0,0,63), White(63,63,63)', 13, 10
     db 13, 10
     db 'Color names for /c: and /b: (example: PALSWAP /c:blue,red,white /b:yellow)', 13, 10
     db '  black, blue, green, cyan, red, magenta, brown, lightgray,', 13, 10
@@ -1917,11 +1911,6 @@ msg_preset2:    db 'Loading preset: Sierra Natural', 13, 10, '$'
 msg_preset3:    db 'Loading preset: C64-inspired', 13, 10, '$'
 msg_preset4:    db 'Loading preset: CGA Red/Green/White', 13, 10, '$'
 msg_preset5:    db 'Loading preset: CGA Red/Blue/White', 13, 10, '$'
-msg_preset6:    db 'Loading preset: Amstrad CPC', 13, 10, '$'
-msg_preset7:    db 'Loading preset: Pastel', 13, 10, '$'
-msg_preset8:    db 'Loading preset: Monochrome Amber', 13, 10, '$'
-msg_preset9:    db 'Loading preset: Monochrome Green', 13, 10, '$'
-msg_preset0:    db 'Loading preset: Monochrome Gray', 13, 10, '$'
 msg_resetting:  db 'Resetting to standard CGA palette...', 13, 10, '$'
 msg_reset_done: db 'CGA palette restored. Default palette loading re-enabled.', 13, 10, '$'
 msg_colors:     db 'Colors (R,G,B):', 13, 10, '$'
@@ -1984,35 +1973,7 @@ preset_cga_palette:
     db 0,  0, 63    ; Blue
     db 63, 63, 63   ; White
 
-preset_amstrad:
-    db 0,  0,  0    ; Black
-    db 0, 42, 42    ; Cyan-ish
-    db 42, 42,  0   ; Yellow-ish
-    db 63, 63, 63   ; White
 
-preset_pastel:
-    db 0,  0,  0    ; Black
-    db 27, 36, 63   ; Light blue
-    db 63, 36, 45   ; Pink
-    db 54, 54, 63   ; Lavender
-
-preset_amber:
-    db 0,  0,  0    ; Black
-    db 21, 14,  0   ; Dark amber
-    db 42, 28,  0   ; Medium amber
-    db 63, 42,  0   ; Bright amber
-
-preset_green:
-    db 0,  0,  0    ; Black
-    db 0, 21,  0    ; Dark green
-    db 0, 42,  0    ; Medium green
-    db 0, 63,  0    ; Bright green
-
-preset_gray:
-    db 0,  0,  0    ; Black
-    db 21, 21, 21   ; Dark gray
-    db 36, 36, 36   ; Medium gray
-    db 63, 63, 63   ; White
 
 ; ============================================================================
 ; Default EGA ATC register values for the 16 CGA colors
